@@ -2,6 +2,13 @@
 
 **Intent:** `001-booksaver-agent-mvp`  
 **Unit:** `001-core-local-data`  
-**Status:** Not started
+**Status:** In progress
 
-No construction bolts have been executed for this unit yet. This project remains in migrated Inception artifacts only.
+## Bolts
+
+- `001-core-local-data` (ddd-construction-bolt) — stories US-002, US-003, US-013
+- `002-core-local-data` (ddd-construction-bolt) — story US-001 (requires 001)
+
+## Log
+
+- **2026-06-16T16:27:51Z**: `001-core-local-data` started - Stage 1: Domain Model
