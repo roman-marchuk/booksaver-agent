@@ -11,7 +11,7 @@ stories:
 created: 2026-06-16T16:25:59Z
 started: 2026-06-16T16:27:51Z
 completed: null
-current_stage: adr
+current_stage: implement
 stages_completed:
   - name: model
     completed: 2026-06-16T18:13:21Z
@@ -19,6 +19,9 @@ stages_completed:
   - name: design
     completed: 2026-06-16T19:28:12Z
     artifact: ddd-02-technical-design.md
+  - name: adr
+    completed: 2026-06-16T19:28:12Z
+    artifact: adr-001-sqlite-local-persistence.md, adr-002-toml-env-config.md, adr-003-python-311-stdlib-first.md, adr-004-hexagonal-protocol-ports.md
 
 # Bolt Dependencies (for execution ordering)
 requires_bolts: []
@@ -68,8 +71,8 @@ user-configured local data directory.
 
 - ✅ **1. Domain Model**: Complete → ddd-01-domain-model.md
 - ✅ **2. Technical Design**: Complete → ddd-02-technical-design.md
-- ⏳ **3. ADR Analysis** (optional): In Progress → adr-*.md ← current
-- [ ] **4. Implement**: Pending → src/ (+ Python scaffold, pyproject.toml)
+- ✅ **3. ADR Analysis**: Complete → adr-001 through adr-004
+- ⏳ **4. Implement**: In Progress → src/ (+ Python scaffold, pyproject.toml) ← current
 - [ ] **5. Test**: Pending → ddd-03-test-report.md
 
 ## Dependencies
