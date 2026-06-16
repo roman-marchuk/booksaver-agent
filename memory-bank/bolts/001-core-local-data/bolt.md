@@ -11,8 +11,11 @@ stories:
 created: 2026-06-16T16:25:59Z
 started: 2026-06-16T16:27:51Z
 completed: null
-current_stage: model
-stages_completed: []
+current_stage: design
+stages_completed:
+  - name: model
+    completed: 2026-06-16T18:13:21Z
+    artifact: ddd-01-domain-model.md
 
 # Bolt Dependencies (for execution ordering)
 requires_bolts: []
@@ -60,8 +63,8 @@ user-configured local data directory.
 
 ## Stages
 
-- ⏳ **1. Domain Model**: In Progress → ddd-01-domain-model.md ← current
-- [ ] **2. Technical Design**: Pending → ddd-02-technical-design.md
+- ✅ **1. Domain Model**: Complete → ddd-01-domain-model.md
+- ⏳ **2. Technical Design**: In Progress → ddd-02-technical-design.md ← current
 - [ ] **3. ADR Analysis** (optional): Pending → adr-*.md
 - [ ] **4. Implement**: Pending → src/ (+ Python scaffold, pyproject.toml)
 - [ ] **5. Test**: Pending → ddd-03-test-report.md
