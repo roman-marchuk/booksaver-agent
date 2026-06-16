@@ -1,0 +1,26 @@
+from __future__ import annotations
+
+from typing import Any, Protocol, runtime_checkable
+
+from booksaver.domain.models import Booking
+from booksaver.domain.value_objects import ConfirmationId
+
+
+@runtime_checkable
+class BookingRepository(Protocol):
+    def add(self, booking: Booking) -> None: ...
+    def get_by_id(self, booking_id: str) -> Booking | None: ...
+    def get_by_confirmation(self, confirmation_id: ConfirmationId) -> Booking | None: ...
+    def list_active(self) -> list[Booking]: ...
+    def exists(self, confirmation_id: ConfirmationId) -> bool: ...
+
+
+@runtime_checkable
+class CheckHistoryRepository(Protocol):
+    def append(self, booking_id: str, record: Any) -> None: ...
+    def list_for_booking(self, booking_id: str) -> list[Any]: ...
+
+
+@runtime_checkable
+class ConfigSource(Protocol):
+    def read(self) -> dict[str, Any]: ...

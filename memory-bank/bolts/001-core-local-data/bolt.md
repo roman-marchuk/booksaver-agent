@@ -11,7 +11,7 @@ stories:
 created: 2026-06-16T16:25:59Z
 started: 2026-06-16T16:27:51Z
 completed: null
-current_stage: implement
+current_stage: test
 stages_completed:
   - name: model
     completed: 2026-06-16T18:13:21Z
@@ -22,6 +22,9 @@ stages_completed:
   - name: adr
     completed: 2026-06-16T19:28:12Z
     artifact: adr-001-sqlite-local-persistence.md, adr-002-toml-env-config.md, adr-003-python-311-stdlib-first.md, adr-004-hexagonal-protocol-ports.md
+  - name: implement
+    completed: 2026-06-16T19:46:17Z
+    artifact: src/booksaver/ + pyproject.toml
 
 # Bolt Dependencies (for execution ordering)
 requires_bolts: []
@@ -72,8 +75,8 @@ user-configured local data directory.
 - ✅ **1. Domain Model**: Complete → ddd-01-domain-model.md
 - ✅ **2. Technical Design**: Complete → ddd-02-technical-design.md
 - ✅ **3. ADR Analysis**: Complete → adr-001 through adr-004
-- ⏳ **4. Implement**: In Progress → src/ (+ Python scaffold, pyproject.toml) ← current
-- [ ] **5. Test**: Pending → ddd-03-test-report.md
+- ✅ **4. Implement**: Complete → src/booksaver/ + pyproject.toml
+- ⏳ **5. Test**: In Progress → ddd-03-test-report.md ← current
 
 ## Dependencies
 

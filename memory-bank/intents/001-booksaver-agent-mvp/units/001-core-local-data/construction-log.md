@@ -15,3 +15,4 @@
 - **2026-06-16T18:13:21Z**: `001-core-local-data` stage-complete - Domain Model → Technical Design
 - **2026-06-16T19:28:12Z**: `001-core-local-data` stage-complete - Technical Design → ADR Analysis
 - **2026-06-16T19:28:12Z**: `001-core-local-data` stage-complete - ADR Analysis → Implement (4 ADRs created: SQLite, TOML+env, Python 3.11+, Hexagonal)
+- **2026-06-16T19:46:17Z**: `001-core-local-data` stage-complete - Implement → Test (scaffold + domain + infra + CLI complete; lint clean)

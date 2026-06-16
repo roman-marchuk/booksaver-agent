@@ -10,11 +10,34 @@ interpretation**, notifies the user (email/Telegram), and offers a **guided rebo
 confirmation**. It is explicitly *not* a web app, hosted service, or multi-tenant SaaS, uses *no* official
 Booking.com API, and keeps all credentials, sessions, and data on the user's machine.
 
-**Current state: planning/documentation only — there is no application code yet.** `project_type` is
-`cli-tool` (`memory-bank/project.yaml`). Do **not** create `src/`, `booksaver/`, `pyproject.toml`,
-dependency files, or `tests/` unless an approved specs.md construction bolt explicitly calls for it
-(see `memory-bank/standards/tech-stack.md`). There are therefore **no build/lint/test commands yet** —
-they will be defined during the Python scaffold bolt and this file should be updated when they exist.
+**Current state: Bolt `001-core-local-data` implement stage complete.** Python scaffold, domain model,
+SQLite store, config loader, and CLI are in place. `project_type` is `cli-tool`
+(`memory-bank/project.yaml`).
+
+## Build / Lint / Test Commands
+
+```bash
+# Install (editable, includes dev tools)
+pip install -e ".[dev]"
+
+# Lint + auto-fix
+python3 -m ruff check src/ --fix
+python3 -m ruff check src/         # must be clean before committing
+
+# Type-check
+python3 -m mypy src/
+
+# Tests
+python3 -m pytest
+
+# Run CLI
+python3 -m booksaver.cli <command>
+# or, after pip install -e .:
+booksaver <command>
+```
+
+**Python 3.11+ required** (uses stdlib `tomllib`). Zero third-party runtime dependencies for the
+core; add new runtime deps only when stdlib genuinely cannot satisfy the need (ADR-003).
 
 ## This repo is driven by the specs.md AI-DLC flow
 

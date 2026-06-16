@@ -1,0 +1,11 @@
+Metadata-Version: 2.4
+Name: booksaver-agent
+Version: 0.1.0
+Summary: Local daemon that monitors Booking.com hotel prices for refundable reservations
+Requires-Python: >=3.11
+License-File: LICENSE
+Provides-Extra: dev
+Requires-Dist: ruff; extra == "dev"
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: mypy; extra == "dev"
+Dynamic: license-file
