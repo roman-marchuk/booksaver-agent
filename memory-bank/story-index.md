@@ -1,0 +1,62 @@
+# Story Index
+
+Global index of BookSaver Agent stories after migration to the official specs.md AI-DLC memory bank.
+
+## 001-booksaver-agent-mvp
+
+| Unit | Stories | Status |
+|------|---------|--------|
+| `001-core-local-data` | 4 stories | Ready |
+| `002-booking-com-price-monitor` | 4 stories | Ready |
+| `003-savings-detection-notifications` | 3 stories | Ready |
+| `004-guided-rebook` | 3 stories | Ready |
+| `005-extensibility-future` | 2 stories | Future |
+
+### 001-core-local-data: Core & Local Data
+
+| Story | Title | Tag | Status | File |
+|-------|-------|-----|--------|------|
+| `US-001` | Run BookSaver as a local daemon | MVP | Ready | `001-core-local-data/stories/001-run-booksaver-as-a-local-daemon.md` |
+| `US-002` | Configure daemon locally | MVP | Ready | `001-core-local-data/stories/002-configure-daemon-locally.md` |
+| `US-003` | Register a refundable Booking.com hotel | MVP | Ready | `001-core-local-data/stories/003-register-a-refundable-booking-com-hotel.md` |
+| `US-013` | Operate without a BookSaver cloud | MVP | Ready | `001-core-local-data/stories/004-operate-without-a-booksaver-cloud.md` |
+
+### 002-booking-com-price-monitor: Booking.com Price Monitor
+
+| Story | Title | Tag | Status | File |
+|-------|-------|-----|--------|------|
+| `US-004` | Store Booking.com session locally | MVP | Ready | `002-booking-com-price-monitor/stories/001-store-booking-com-session-locally.md` |
+| `US-005` | Run scheduled browser check | MVP | Ready | `002-booking-com-price-monitor/stories/002-run-scheduled-browser-check.md` |
+| `US-006` | Extract booking and offer data with LLM | MVP | Ready | `002-booking-com-price-monitor/stories/003-extract-booking-and-offer-data-with-llm.md` |
+| `US-014` | Handle check failures gracefully | MVP | Ready | `002-booking-com-price-monitor/stories/004-handle-check-failures-gracefully.md` |
+
+### 003-savings-detection-notifications: Savings Detection & Notifications
+
+| Story | Title | Tag | Status | File |
+|-------|-------|-----|--------|------|
+| `US-007` | Compare live price to baseline | MVP | Ready | `003-savings-detection-notifications/stories/001-compare-live-price-to-baseline.md` |
+| `US-008` | Enforce pragmatic equivalence and refundability | MVP | Ready | `003-savings-detection-notifications/stories/002-enforce-pragmatic-equivalence-and-refundability.md` |
+| `US-009` | Notify via email and Telegram | MVP | Ready | `003-savings-detection-notifications/stories/003-notify-via-email-and-telegram.md` |
+
+### 004-guided-rebook: Guided Rebook
+
+| Story | Title | Tag | Status | File |
+|-------|-------|-----|--------|------|
+| `US-010` | Start guided rebook only after explicit intent | MVP | Ready | `004-guided-rebook/stories/001-start-guided-rebook-only-after-explicit-intent.md` |
+| `US-011` | Mandatory confirmation before cancel or purchase | MVP | Ready | `004-guided-rebook/stories/002-mandatory-confirmation-before-cancel-or-purchase.md` |
+| `US-012` | Log rebook outcomes locally | MVP | Ready | `004-guided-rebook/stories/003-log-rebook-outcomes-locally.md` |
+
+### 005-extensibility-future: Extensibility
+
+| Story | Title | Tag | Status | File |
+|-------|-------|-----|--------|------|
+| `US-015` | Add a second booking platform | Future | Ready | `005-extensibility-future/stories/001-add-a-second-booking-platform.md` |
+| `US-016` | Support non-hotel product types | Future | Ready | `005-extensibility-future/stories/002-support-non-hotel-product-types.md` |
+
+## Summary
+
+| Intent | Units | Stories | Status |
+|--------|-------|---------|--------|
+| `001-booksaver-agent-mvp` | 5 | 16 | Ready for Construction planning |
+
+All 16 original stories are assigned exactly once.

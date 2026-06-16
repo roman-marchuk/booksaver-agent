@@ -1,0 +1,4 @@
+project_type: cli-tool
+initialized_at: '2026-06-16T03:32:24Z'
+flow: aidlc
+intent: 001-booksaver-agent-mvp

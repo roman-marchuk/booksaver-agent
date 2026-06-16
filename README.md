@@ -1,4 +1,4 @@
 # BookSaver Agent
-An autonomous agent that monitors your travel bookings, detects price drops by navigating live booking sites with a browser agent, and rebooks on your behalf — runs as a lightweight local daemon, no account or platform required.
+BookSaver Agent is a planned local-first Python daemon that monitors refundable Booking.com hotel bookings, detects price drops with browser automation and LLM-assisted page interpretation, notifies the user, and guides rebooking only with explicit human confirmation.
 
-Side note for now, during this project I am experimenting with the prompt flow for the agents from https://github.com/fabriqaai/specs.md.
+This project uses the official specs.md AI-DLC flow. Planning artifacts live in [`memory-bank/`](memory-bank/), and the installed specs.md agent definitions live in [`.specsmd/`](.specsmd/).
