@@ -1,3 +1,9 @@
+---
+id: US-013
+status: complete
+implemented: true
+---
+
 # US-013 Operate without a BookSaver cloud
 
 **Intent:** `001-booksaver-agent-mvp`  

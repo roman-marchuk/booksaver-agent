@@ -5,41 +5,39 @@ intent: 001-booksaver-agent-mvp
 type: ddd-construction-bolt
 status: complete
 stories:
-  - US-002
-  - US-003
-  - US-013
-created: 2026-06-16T16:25:59Z
-started: 2026-06-16T16:27:51Z
-completed: null
+  - 002-configure-daemon-locally
+  - 003-register-a-refundable-booking-com-hotel
+  - 004-operate-without-a-booksaver-cloud
+created: 2026-06-16T16:25:59.000Z
+started: 2026-06-16T16:27:51.000Z
+completed: "2026-06-17T20:54:33Z"
 current_stage: null
-completed: 2026-06-17T20:47:32Z
 stages_completed:
   - name: model
-    completed: 2026-06-16T18:13:21Z
+    completed: 2026-06-16T18:13:21.000Z
     artifact: ddd-01-domain-model.md
   - name: design
-    completed: 2026-06-16T19:28:12Z
+    completed: 2026-06-16T19:28:12.000Z
     artifact: ddd-02-technical-design.md
   - name: adr
-    completed: 2026-06-16T19:28:12Z
+    completed: 2026-06-16T19:28:12.000Z
     artifact: adr-001-sqlite-local-persistence.md, adr-002-toml-env-config.md, adr-003-python-311-stdlib-first.md, adr-004-hexagonal-protocol-ports.md
   - name: implement
-    completed: 2026-06-16T19:46:17Z
+    completed: 2026-06-16T19:46:17.000Z
     artifact: src/booksaver/ + pyproject.toml
-
-# Bolt Dependencies (for execution ordering)
+  - name: test
+    completed: 2026-06-17T20:47:32.000Z
+    artifact: ddd-03-test-report.md
 requires_bolts: []
 enables_bolts:
   - 002-core-local-data
 requires_units: []
 blocks: false
-
-# Complexity Assessment (aggregate of included stories)
 complexity:
-  avg_complexity: 2        # 1=Low, 2=Medium, 3=High
-  avg_uncertainty: 2       # tech-stack TBD: config format + persistence mechanism resolved here
-  max_dependencies: 2      # booking registration depends on local persistence
-  testing_scope: 2         # config validation + persistence invariants = integration
+  avg_complexity: 2
+  avg_uncertainty: 2
+  max_dependencies: 2
+  testing_scope: 2
 ---
 
 # Bolt: 001-core-local-data

@@ -1,3 +1,9 @@
+---
+id: US-003
+status: complete
+implemented: true
+---
+
 # US-003 Register a refundable Booking.com hotel
 
 **Intent:** `001-booksaver-agent-mvp`  
