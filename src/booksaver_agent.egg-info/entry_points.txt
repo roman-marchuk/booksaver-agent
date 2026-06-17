@@ -1,2 +1,0 @@
-[console_scripts]
-booksaver = booksaver.cli.__main__:main
