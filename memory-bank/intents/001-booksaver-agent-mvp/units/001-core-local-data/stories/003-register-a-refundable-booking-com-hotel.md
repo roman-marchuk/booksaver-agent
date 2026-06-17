@@ -2,7 +2,7 @@
 
 **Intent:** `001-booksaver-agent-mvp`  
 **Unit:** `001-core-local-data`  
-**Status:** Ready  
+**Status:** Complete  
 **Tag:** MVP  
 **Former grouping:** Register booking
 

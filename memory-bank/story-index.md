@@ -6,7 +6,7 @@ Global index of BookSaver Agent stories after migration to the official specs.md
 
 | Unit | Stories | Status |
 |------|---------|--------|
-| `001-core-local-data` | 4 stories | Ready |
+| `001-core-local-data` | 4 stories | In Progress (3/4 complete, US-001 pending) |
 | `002-booking-com-price-monitor` | 4 stories | Ready |
 | `003-savings-detection-notifications` | 3 stories | Ready |
 | `004-guided-rebook` | 3 stories | Ready |
@@ -17,9 +17,9 @@ Global index of BookSaver Agent stories after migration to the official specs.md
 | Story | Title | Tag | Status | File |
 |-------|-------|-----|--------|------|
 | `US-001` | Run BookSaver as a local daemon | MVP | Ready | `001-core-local-data/stories/001-run-booksaver-as-a-local-daemon.md` |
-| `US-002` | Configure daemon locally | MVP | Ready | `001-core-local-data/stories/002-configure-daemon-locally.md` |
-| `US-003` | Register a refundable Booking.com hotel | MVP | Ready | `001-core-local-data/stories/003-register-a-refundable-booking-com-hotel.md` |
-| `US-013` | Operate without a BookSaver cloud | MVP | Ready | `001-core-local-data/stories/004-operate-without-a-booksaver-cloud.md` |
+| `US-002` | Configure daemon locally | MVP | Complete | `001-core-local-data/stories/002-configure-daemon-locally.md` |
+| `US-003` | Register a refundable Booking.com hotel | MVP | Complete | `001-core-local-data/stories/003-register-a-refundable-booking-com-hotel.md` |
+| `US-013` | Operate without a BookSaver cloud | MVP | Complete | `001-core-local-data/stories/004-operate-without-a-booksaver-cloud.md` |
 
 ### 002-booking-com-price-monitor: Booking.com Price Monitor
 

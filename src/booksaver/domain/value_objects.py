@@ -145,6 +145,8 @@ class DataDirectory:
 
     @classmethod
     def of(cls, path_str: str) -> DataDirectory:
+        if "://" in path_str:
+            raise ValueError(f"DataDirectory must be a local path, not a URL: {path_str}")
         resolved = Path(path_str).expanduser().resolve()
         return cls(path=resolved)
 
