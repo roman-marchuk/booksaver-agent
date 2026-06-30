@@ -1,3 +1,9 @@
+---
+id: US-001
+status: Ready
+implemented: false
+---
+
 # US-001 Run BookSaver as a local daemon
 
 **Intent:** `001-booksaver-agent-mvp`  

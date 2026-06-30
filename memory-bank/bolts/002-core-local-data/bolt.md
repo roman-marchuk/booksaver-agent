@@ -3,13 +3,13 @@ id: 002-core-local-data
 unit: 001-core-local-data
 intent: 001-booksaver-agent-mvp
 type: ddd-construction-bolt
-status: planned
+status: in-progress
 stories:
-  - US-001
+  - 001-run-booksaver-as-a-local-daemon
 created: 2026-06-16T16:25:59Z
-started: null
+started: 2026-06-17T21:10:00Z
 completed: null
-current_stage: null
+current_stage: model
 stages_completed: []
 
 # Bolt Dependencies (for execution ordering)
