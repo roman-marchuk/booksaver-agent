@@ -1,6 +1,6 @@
 ---
-last_updated: 2026-06-16T19:28:12Z
-total_decisions: 4
+last_updated: 2026-07-01T00:00:00Z
+total_decisions: 6
 ---
 
 # Decision Index
@@ -17,6 +17,22 @@ Use this to find relevant prior decisions when working on related features.
 ---
 
 ## Decisions
+
+### ADR-006: threading.Event sleep loop as the scheduler mechanism
+- **Status**: accepted
+- **Date**: 2026-07-01
+- **Bolt**: 002-core-local-data (core-local-data)
+- **Path**: `bolts/002-core-local-data/adr-006-threading-event-scheduler.md`
+- **Summary**: A `threading.Event.wait(timeout)` loop is used for the fixed-interval scheduler instead of `sched`, `time.sleep()`, or APScheduler. Wakes immediately on stop signal; no third-party dep; sufficient for a single fixed-interval job in MVP.
+- **Read when**: Adding a new job to the scheduler; changing the check interval; considering APScheduler or cron-style scheduling for future units; implementing or testing clean daemon shutdown.
+
+### ADR-005: Foreground-only daemon (no os.fork double-fork)
+- **Status**: accepted
+- **Date**: 2026-07-01
+- **Bolt**: 002-core-local-data (core-local-data)
+- **Path**: `bolts/002-core-local-data/adr-005-foreground-daemon.md`
+- **Summary**: `booksaver run` blocks in the foreground; users background it with `&` or a systemd/launchd unit. No `os.fork()` double-fork or daemonization library. Simpler, debuggable, and compatible with OS service managers that expect foreground processes.
+- **Read when**: Implementing `booksaver run`/`stop`; writing a systemd unit or launchd plist for auto-start; considering background daemonization for a future bolt.
 
 ### ADR-004: Hexagonal architecture with typing.Protocol repository interfaces
 - **Status**: accepted
