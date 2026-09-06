@@ -61,3 +61,23 @@ last_updated: 2026-07-26T23:03:21Z
 Construction is complete. Local Docker was unavailable; live Linux/Xvfb and Telegram
 Android/iOS/Desktop acceptance remain explicit pre-deployment gates. Git, merge, push, and
 deployment remain held for final approval.
+
+- **2026-09-06T20:39:36Z**: Bolt 067 started at plan: responsive popup request, existing viewer and
+  official Telegram API reviewed; independent compatibility review running.
+
+- **2026-09-06T20:40:20Z**: Bolt 067 plan complete → implement; bounded approach follows the owner
+  request, with native acceptance and final Git/deployment review preserved.
+
+- **2026-09-06T20:40:53Z**: Bolt 067 implement complete → test; viewer-only fullscreen, safe areas,
+  separate fallback feedback and dock wrapping added. Source Ruff passes.
+
+- **2026-09-06T20:44:13Z**: Bolt 067 test complete: 105 affected tests, Ruff and mypy pass. Full
+  suite has six independently reproduced pre-existing expired-fixture failures; see test report.
+  Native acceptance remains pending approved deployment.
+
+- **2026-09-06T20:44:32Z**: Mandatory bolt-complete.cjs succeeded: Bolt 067, US-173, unit and intent
+  cascaded to complete. Story index synchronized. Native acceptance and external actions remain pending.
+
+- **2026-09-06T21:22:34Z**: Release integrated onto main 863e9b5; upstream allocation requires
+  Bolt 067 / US-173. All 1957 tests now pass, including upstream date-fixture repairs. Owner
+  authorizes merge/deploy and a usage-limit-only Bugbot exception.

@@ -6,7 +6,7 @@ status: complete
 unit_type: cli
 default_bolt_type: simple-construction-bolt
 created: 2026-07-26T22:14:47.000Z
-updated: 2026-07-26T22:45:44.000Z
+updated: 2026-09-06T20:44:13.000Z
 ---
 
 # Unit Brief: Device-Aware Remote Authentication Viewer
@@ -185,3 +185,10 @@ No new persistent data. Client capabilities and keyboard buffer exist only for t
 The primary residual risk is mobile WebView behavior that cannot be proven by desktop automation.
 Construction must treat Android/iOS Telegram acceptance as a release gate rather than relying only
 on generated-HTML assertions.
+
+## Responsive desktop follow-up
+
+FR-8 / US-173 adds optional host fullscreen, desktop automatic enlargement, and safe-area layout
+using the existing Telegram bridge. Bolt 067 is a simple construction bolt depending on Bolt 030.
+No new dependency, domain model, persistence, browser profile, or authentication change is needed.
+Native Telegram desktop and mobile acceptance is pending deployment approval.

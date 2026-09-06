@@ -73,3 +73,7 @@ Route Bolt 030 to the Construction Agent's Plan stage; Bolt 031 follows only aft
 The unit depends on completed Bolts 026, 027, and 029. It changes viewer presentation, input, and
 same-user abandoned-attempt recovery without changing session capture, Booking.com navigation,
 mobile-check execution, or the single-browser exclusivity boundary.
+
+- **2026-09-06T20:39:36Z**: Owner requested responsive desktop `/connect` popup implementation. Added FR-8,
+  US-173, and Bolt 067 to the existing viewer unit; bounded local construction is authorized by
+  this request. Fullscreen is best effort with fallback; native acceptance and Git/deploy remain held.

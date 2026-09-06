@@ -338,7 +338,7 @@ Story file paths are relative to `memory-bank/intents/{intent}/units/`.
 
 | Unit | Stories | Status |
 |------|---------|--------|
-| `001-device-aware-remote-auth-viewer` | 5 stories | Complete (bolts 030–031) |
+| `001-device-aware-remote-auth-viewer` | 6 stories | Complete (bolts 030–031, 067) |
 
 ### 001-device-aware-remote-auth-viewer: Device-Aware Remote Authentication Viewer
 
@@ -349,6 +349,7 @@ Story file paths are relative to `memory-bank/intents/{intent}/units/`.
 | `US-103` | Preserve viewport and lifecycle usability | Remote Auth Viewer | Complete | `001-device-aware-remote-auth-viewer/stories/003-preserve-viewport-and-lifecycle-usability.md` |
 | `US-104` | Preserve credential and desktop safety | Remote Auth Viewer | Complete | `001-device-aware-remote-auth-viewer/stories/004-preserve-credential-and-desktop-safety.md` |
 | `US-105` | Recover from an abandoned viewer | Remote Auth Viewer | Complete | `001-device-aware-remote-auth-viewer/stories/005-recover-from-abandoned-viewer.md` |
+| `US-173` | Enlarge the desktop viewer | Remote Auth Viewer | Complete | `001-device-aware-remote-auth-viewer/stories/006-enlarge-desktop-viewer.md` |
 
 ## 017-current-rebook-opportunities
 
@@ -579,7 +580,7 @@ Story file paths are relative to `memory-bank/intents/{intent}/units/`.
 | `013-authenticated-mobile-web-monitoring` | 1 | 6 | Complete (bolt 025; 867 tests) |
 | `014-remote-auth-display-reliability` | 1 | 2 | Complete (bolt 027; 871 tests) |
 | `015-authentication-boundary-hardening` | 2 | 4 | Complete (bolts 028–029; 883 tests) |
-| `016-device-aware-remote-auth-viewer` | 1 | 5 | Complete (bolts 030–031; 898 tests) |
+| `016-device-aware-remote-auth-viewer` | 1 | 6 | Complete (bolts 030–031, 067; native fullscreen acceptance pending) |
 | `017-current-rebook-opportunities` | 1 | 3 | Complete (bolt 032; 909 tests) |
 | `018-conclusive-rebook-opportunity-lifecycle` | 1 | 3 | Complete (bolt 033; 937 tests) |
 | `019-booking-account-synchronization` | 2 | 7 | Complete (bolts 034–036; 959 tests) |
@@ -588,5 +589,5 @@ Story file paths are relative to `memory-bank/intents/{intent}/units/`.
 | `022-adaptive-booking-browser-resilience` | 3 | 13 | Complete (bolts 041–049) |
 | `023-replaceable-agentic-browser-executor` | 8 | 30 | In construction (bolt 066 complete; price qualification bolt 052 active, bolt 055 blocked) |
 
-All 172 story files (168 complete in-scope, 0 ready, 2 post-MVP extensibility, and 2
-live-gated/blocked stories) are assigned exactly once.
+All 173 stories (169 complete; remaining stories retain the statuses above)
+are assigned exactly once.
