@@ -4,7 +4,10 @@ import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from booksaver.domain.remote_auth import (
+    LoginDevice,
     RemoteAuthSettings,
     RemoteAuthStatus,
     TelegramMiniAppIdentity,
@@ -20,15 +23,19 @@ class StubManager:
         self.viewer_token = "viewer-secret"
         self.user_id = 123
         self.cancelled: list[str] = []
+        self.exchanges: list[tuple[str, int, LoginDevice]] = []
 
     def expected_telegram_user(self, token: str) -> int:
         if token != self.launch_token:
             raise ValueError("bad launch")
         return self.user_id
 
-    def exchange(self, token: str, user_id: int) -> ViewerGrant:
+    def exchange(
+        self, token: str, user_id: int, *, login_device: LoginDevice = LoginDevice.MOBILE,
+    ) -> ViewerGrant:
         assert token == self.launch_token
         assert user_id == self.user_id
+        self.exchanges.append((token, user_id, login_device))
         return ViewerGrant(
             self.viewer_token,
             datetime.now(UTC) + timedelta(minutes=10),
@@ -237,3 +244,69 @@ def test_novnc_static_handler_blocks_traversal(tmp_path: Path) -> None:
     assert response.body.startswith(b"export default")
     assert _headers(response)["cache-control"] == ["no-store"]
     assert app.handle("GET", "/novnc/../outside.txt", {}).status == 404
+
+
+@pytest.mark.parametrize(
+    ("hint", "expected"),
+    [
+        ("desktop", LoginDevice.DESKTOP),
+        ("mobile", LoginDevice.MOBILE),
+        (None, LoginDevice.MOBILE),
+        ("Desktop", LoginDevice.MOBILE),
+        ("firefox", LoginDevice.MOBILE),
+        ("--no-sandbox", LoginDevice.MOBILE),
+        ({"viewport": {"width": 99999}}, LoginDevice.MOBILE),
+        (["desktop"], LoginDevice.MOBILE),
+        (True, LoginDevice.MOBILE),
+    ],
+)
+def test_exchange_accepts_only_allowlisted_device_hints(
+    tmp_path: Path, hint: object, expected: LoginDevice,
+) -> None:
+    app, manager, verifier = _app(tmp_path)
+    payload = json.dumps({
+        "launch_token": "launch-secret",
+        "init_data": "signed-telegram-data",
+        "login_device": hint,
+        "user_agent": "untrusted browser identity",
+        "viewport": {"width": 99999, "height": 99999},
+    }).encode()
+
+    response = app.handle(
+        "POST", "/api/connect/exchange",
+        {"origin": "https://connect.example.test"}, payload,
+    )
+
+    assert response.status == 200
+    assert verifier.calls == [("signed-telegram-data", 123)]
+    assert manager.exchanges == [("launch-secret", 123, expected)]
+
+
+def test_exchange_without_device_hint_preserves_mobile_clients(tmp_path: Path) -> None:
+    app, manager, _verifier = _app(tmp_path)
+    response = app.handle(
+        "POST", "/api/connect/exchange",
+        {"origin": "https://connect.example.test"},
+        json.dumps({"launch_token": "launch-secret", "init_data": "signed-telegram-data"}).encode(),
+    )
+    assert response.status == 200
+    assert manager.exchanges == [("launch-secret", 123, LoginDevice.MOBILE)]
+
+
+@pytest.mark.parametrize("token,init_data", [
+    ("launch-secret", "forged-telegram-data"),
+    ("unknown-launch", "signed-telegram-data"),
+])
+def test_device_hint_cannot_bypass_launch_or_telegram_identity(
+    tmp_path: Path, token: str, init_data: str,
+) -> None:
+    app, manager, _verifier = _app(tmp_path)
+    response = app.handle(
+        "POST", "/api/connect/exchange",
+        {"origin": "https://connect.example.test"},
+        json.dumps({
+            "launch_token": token, "init_data": init_data, "login_device": "desktop",
+        }).encode(),
+    )
+    assert response.status == 401
+    assert manager.exchanges == []

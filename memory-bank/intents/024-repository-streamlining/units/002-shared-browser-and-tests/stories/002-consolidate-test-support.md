@@ -5,11 +5,11 @@ intent: 024-repository-streamlining
 status: complete
 priority: must
 created: "2026-09-06T21:28:53Z"
-assigned_bolt: 070-shared-browser-and-tests
+assigned_bolt: 071-shared-browser-and-tests
 implemented: true
 ---
 
-# US-180: Consolidate Test Support
+# US-181: Consolidate Test Support
 
 As the owner, I want the reviewed cleanup completed so current behavior has one clear implementation and useful evidence.
 

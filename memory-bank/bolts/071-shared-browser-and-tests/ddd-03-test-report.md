@@ -1,12 +1,12 @@
 ---
 stage: test
-bolt: 071-lifecycle-and-branch-hygiene
+bolt: 071-shared-browser-and-tests
 created: 2026-09-06T22:05:17Z
 ---
 
 # Test Report
 
-Sixteen Node tests cover schema/path parity, scoped references, index totals/duplicates/identity, nested timestamp errors, chronology/provenance, residual post-fix errors, status/completion scoping, and parsed Compose policy. Branch deletion was verified locally and remotely; active task/worktree material was preserved.
+Independent review preserved the session/network/action guards, isolated hosts, code-owned authentication and refresh, model budget accounting, result validation, and cleanup. Its one finding restored include_extracted_content_only_once=True with a contract assertion. Key-resolution tests now isolate ambient credentials. Remote-auth tests cover runtime assembly and positive/negative server verification with model sentinels.
 
 ## Integrated evidence
 

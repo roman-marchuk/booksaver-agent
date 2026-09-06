@@ -1,12 +1,12 @@
 ---
 stage: design
-bolt: 071-lifecycle-and-branch-hygiene
+bolt: 071-shared-browser-and-tests
 created: 2026-09-06T21:28:53Z
 ---
 
 # Technical Design
 
-Read canonical memory-bank.yaml in existing validators, traverse declared timestamp fields including stage arrays, validate intent-scoped unit/bolt links and index membership; post-fix revalidate and fail on residual errors. Keep check entrypoints small and document them. Remove current-state counters from prose; annotate historical metadata uncertainty without inventing dates. For branch deletion, record names/SHAs and policy, reject moved refs, preserve active checkouts and untracked work, and verify remote/local absence.
+Extract a shared Browser Use session host from inventory internals with public narrow lifecycle methods and a shared Agent configuration factory; capability-specific registries and output mapping remain separate. Consolidate pure normalization/provenance functions and packaged replay corpus. Use small explicit test builders and constructor spies rather than generic frameworks or reduced coverage.
 
 ## ADR analysis
 

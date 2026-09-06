@@ -1,12 +1,12 @@
 ---
 stage: test
-bolt: 069-retired-runtime
+bolt: 072-lifecycle-and-branch-hygiene
 created: 2026-09-06T22:05:17Z
 ---
 
 # Test Report
 
-Retired mutation/global-session imports have no surviving callers. Account-sync, per-user isolation, historical-table purge, savings, notification and check-history coverage remains. The independent review found stale methods in a test fake; those were removed and notification/savings tests passed.
+Sixteen Node tests cover schema/path parity, scoped references, index totals/duplicates/identity, nested timestamp errors, chronology/provenance, residual post-fix errors, status/completion scoping, and parsed Compose policy. Branch deletion was verified locally and remotely; active task/worktree material was preserved.
 
 ## Integrated evidence
 

@@ -5,11 +5,11 @@ intent: 024-repository-streamlining
 status: complete
 priority: must
 created: "2026-09-06T21:28:53Z"
-assigned_bolt: 069-retired-runtime
+assigned_bolt: 070-retired-runtime
 implemented: true
 ---
 
-# US-177: Remove Retired Mutation Workflows
+# US-178: Remove Retired Mutation Workflows
 
 As the owner, I want the reviewed cleanup completed so current behavior has one clear implementation and useful evidence.
 

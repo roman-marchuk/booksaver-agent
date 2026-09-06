@@ -77,3 +77,6 @@ mobile-check execution, or the single-browser exclusivity boundary.
 - **2026-09-06T20:39:36Z**: Owner requested responsive desktop `/connect` popup implementation. Added FR-8,
   US-173, and Bolt 067 to the existing viewer unit; bounded local construction is authorized by
   this request. Fullscreen is best effort with fallback; native acceptance and Git/deploy remain held.
+
+- **2026-09-06T21:44:35Z**: Owner requests device-adaptive login with mobile checks. Added FR-9–11,
+  Unit 002, US-175–177, Bolt 069 and ADR-047 after compatibility/lifecycle review.

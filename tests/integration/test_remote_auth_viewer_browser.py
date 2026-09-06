@@ -133,9 +133,9 @@ class _ViewerHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         length = int(self.headers.get("Content-Length", "0"))
-        if length:
-            self.rfile.read(length)
+        body = self.rfile.read(length) if length else b"{}"
         if self.path == "/api/connect/exchange":
+            self.server.exchange_payloads.append(json.loads(body))
             self.server.exchanges += 1
             self._send(200, '{"status":"authorized"}', "application/json")
             return
@@ -162,6 +162,7 @@ class _ViewerServer(ThreadingHTTPServer):
     fullscreen_mode: str
     session_status: str
     exchanges: int
+    exchange_payloads: list[dict[str, object]]
     cancellations: int
 
 
@@ -172,6 +173,7 @@ def viewer_server() -> Iterator[tuple[_ViewerServer, str]]:
     server.fullscreen_mode = "missing"
     server.session_status = "ready"
     server.exchanges = 0
+    server.exchange_payloads = []
     server.cancellations = 0
     worker = threading.Thread(target=server.serve_forever, daemon=True)
     worker.start()
@@ -609,3 +611,88 @@ def test_fullscreen_mobile_keyboard_keeps_controls_and_touched_region_reachable(
     assert browser_page.evaluate("window.__rfbInstances.length") == 1
     assert server.exchanges == 1
     assert server.cancellations == 0
+
+
+@pytest.mark.parametrize(
+    ("platform", "has_touch", "expected"),
+    [
+        ("tdesktop", False, "desktop"),
+        ("tdesktop", True, "desktop"),
+        ("macos", True, "desktop"),
+        ("unigram", True, "desktop"),
+        ("android", False, "mobile"),
+        ("android_x", True, "mobile"),
+        ("ios", False, "mobile"),
+        ("web", False, "desktop"),
+        ("webk", False, "desktop"),
+        ("weba", False, "desktop"),
+        ("web", True, "mobile"),
+        ("webk", True, "mobile"),
+        ("weba", True, "mobile"),
+        ("unknown", False, "mobile"),
+        ("unknown", True, "mobile"),
+        ("future-client", False, "mobile"),
+    ],
+)
+def test_login_discovery_sends_only_device_class_and_remains_stable_on_resize(
+    viewer_server: tuple[_ViewerServer, str],
+    browser: Browser,
+    platform: str,
+    has_touch: bool,
+    expected: str,
+) -> None:
+    server, url = viewer_server
+    server.platform = platform
+    context = browser.new_context(has_touch=has_touch, viewport={"width": 1000, "height": 700})
+    try:
+        page = context.new_page()
+        page.goto(url)
+        page.wait_for_function("!document.querySelector('#keyboard').disabled")
+        assert server.exchange_payloads == [
+            {"launch_token": "launch-token", "init_data": "signed", "login_device": expected}
+        ]
+        page.set_viewport_size({"width": 390, "height": 780})
+        page.evaluate("window.__telegramEvent('viewportChanged')")
+        assert server.exchanges == 1
+        assert page.locator("body").evaluate(
+            "element => element.classList.contains('desktop-login')"
+        ) is (expected == "desktop")
+    finally:
+        context.close()
+
+
+def test_web_discovery_without_pointer_capability_defaults_to_mobile(
+    viewer_server: tuple[_ViewerServer, str], desktop_page: Page
+) -> None:
+    server, url = viewer_server
+    server.platform = "web"
+    desktop_page.add_init_script("window.matchMedia = undefined")
+    desktop_page.goto(url)
+    desktop_page.wait_for_function("!document.querySelector('#keyboard').disabled")
+    assert server.exchange_payloads[0]["login_device"] == "mobile"
+
+
+def test_touch_desktop_keyboard_uses_landscape_stream_geometry(
+    viewer_server: tuple[_ViewerServer, str], browser_page: Page
+) -> None:
+    server, url = viewer_server
+    server.platform = "tdesktop"
+    browser_page.goto(url)
+    browser_page.wait_for_function("!document.querySelector('#keyboard').disabled")
+    browser_page.locator("#keyboard").click()
+    browser_page.evaluate(
+        """() => {
+          Object.defineProperty(window.visualViewport, 'height', {
+            configurable: true, get: () => 360
+          });
+          window.visualViewport.dispatchEvent(new Event('resize'));
+        }"""
+    )
+    browser_page.wait_for_function("document.body.clientHeight === 360")
+    screen = browser_page.locator("#screen").bounding_box()
+    assert screen is not None
+    assert screen["height"] == pytest.approx(390 * 800 / 1280)
+    for selector in ["#keyboard", "#next", "#enter", "#cancel"]:
+        box = browser_page.locator(selector).bounding_box()
+        assert box is not None and box["y"] + box["height"] <= 360
+    assert server.exchange_payloads[0]["login_device"] == "desktop"

@@ -12,6 +12,7 @@ from booksaver.application.remote_auth import RemoteBrowserWork
 from booksaver.domain.mobile_web import MobileWebSettings
 from booksaver.domain.models import Config
 from booksaver.domain.remote_auth import (
+    LoginDevice,
     RemoteAuthFailure,
     RemoteAuthServerReceipt,
     RemoteAuthServerVerification,
@@ -522,6 +523,19 @@ class _RunnerPage:
         self.goto_calls.append((url, kwargs))
 
 
+class _RunnerCdp:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, Any]] = []
+        self.detached = False
+
+    def send(self, command: str, parameters: Any = None) -> dict[str, int]:
+        self.calls.append((command, parameters))
+        return {"windowId": 7}
+
+    def detach(self) -> None:
+        self.detached = True
+
+
 class _RunnerContext(FakeContext):
     def __init__(self, cookie_states: list[str]) -> None:
         super().__init__()
@@ -529,6 +543,11 @@ class _RunnerContext(FakeContext):
         self.page = _RunnerPage()
         self.closed = False
         self.default_timeout: int | None = None
+        self.cdp = _RunnerCdp()
+
+    def new_cdp_session(self, page: Any) -> _RunnerCdp:
+        assert page is self.page
+        return self.cdp
 
     def set_default_timeout(self, value: int) -> None:
         self.default_timeout = value
@@ -545,8 +564,14 @@ class _RunnerContext(FakeContext):
 
 
 class _RunnerBrowser:
-    def __init__(self) -> None:
+    def __init__(self, context: Any = None) -> None:
         self.closed = False
+        self.context = context
+        self.context_options: list[dict[str, Any]] = []
+
+    def new_context(self, **kwargs: Any) -> Any:
+        self.context_options.append(kwargs)
+        return self.context
 
     def close(self) -> None:
         self.closed = True
@@ -555,8 +580,10 @@ class _RunnerBrowser:
 class _RunnerChromium:
     def __init__(self, browser: _RunnerBrowser) -> None:
         self.browser = browser
+        self.launch_options: dict[str, Any] = {}
 
-    def launch(self, **_kwargs: Any) -> _RunnerBrowser:
+    def launch(self, **kwargs: Any) -> _RunnerBrowser:
+        self.launch_options = kwargs
         return self.browser
 
 
@@ -637,9 +664,11 @@ class _RunnerVerifier:
         return True
 
 
+@pytest.mark.parametrize("login_device", list(LoginDevice))
 def test_runner_uses_server_evidence_without_page_inspection_or_reload(
     monkeypatch: Any,
-    forbidden_model_calls,
+    login_device: LoginDevice,
+    forbidden_model_calls: Mock,
 ) -> None:
     from playwright import sync_api
 
@@ -648,10 +677,19 @@ def test_runner_uses_server_evidence_without_page_inspection_or_reload(
     browser = _RunnerBrowser()
     playwright = _RunnerPlaywright(browser)
     context = _RunnerContext(["anonymous", "anonymous", "authenticated", "authenticated"])
+    browser.context = context
     verifier = _RunnerVerifier(ServerSessionProbeOutcome.SIGNED_OUT)
-    processes: list[_RunnerProcess] = []
+    verifier_inputs: list[tuple[Any, ...]] = []
 
-    def spawn(_command: list[str]) -> _RunnerProcess:
+    def make_verifier(*args: Any) -> _RunnerVerifier:
+        verifier_inputs.append(args)
+        return verifier
+
+    processes: list[_RunnerProcess] = []
+    commands: list[list[str]] = []
+
+    def spawn(command: list[str]) -> _RunnerProcess:
+        commands.append(command)
         process = _RunnerProcess()
         processes.append(process)
         return process
@@ -671,7 +709,7 @@ def test_runner_uses_server_evidence_without_page_inspection_or_reload(
     runner = SystemRemoteBrowserRunner(
         RemoteAuthSettings(),
         MobileWebSettings(),
-        server_verifier_factory=lambda *_args: verifier,  # type: ignore[arg-type]
+        server_verifier_factory=make_verifier,  # type: ignore[arg-type]
     )
     work = RemoteBrowserWork(
         attempt_id="attempt-1",
@@ -679,6 +717,7 @@ def test_runner_uses_server_evidence_without_page_inspection_or_reload(
         websocket_token="ws",
         expires_at=datetime.now(UTC) + timedelta(minutes=5),
         cancel_event=_NoWaitEvent(),  # type: ignore[arg-type]
+        login_device=login_device,
     )
 
     result = runner.run(
@@ -688,6 +727,24 @@ def test_runner_uses_server_evidence_without_page_inspection_or_reload(
         lambda: finalizing.append(True) or True,
     )
 
+    width, height = login_device.display_size
+    assert commands[0][:4] == ["Xvfb", ":99", "-screen", "0"]
+    assert commands[0][4] == f"{width}x{height}x24"
+    assert f"--window-size={width},{height}" in playwright.chromium.launch_options["args"]
+    assert len(verifier_inputs) == 1
+    assert verifier_inputs[0] == (browser, MobileWebSettings(), DESCRIPTOR, work)
+    if login_device is LoginDevice.DESKTOP:
+        assert browser.context_options[0]["is_mobile"] is False
+        assert browser.context_options[0]["has_touch"] is False
+        assert "user_agent" not in browser.context_options[0]
+        assert browser.context_options[0]["no_viewport"] is True
+        assert context.cdp.calls == [
+            ("Browser.getWindowForTarget", None),
+            ("Browser.setWindowBounds", {"windowId": 7, "bounds": {"windowState": "fullscreen"}}),
+        ]
+        assert context.cdp.detached
+    else:
+        assert context.cdp.calls == []
     assert result.status is RemoteAuthStatus.SUCCEEDED
     assert result.cookies_json == '{"state":"authenticated"}'
     assert ready == [True]
@@ -709,7 +766,7 @@ def test_runner_uses_server_evidence_without_page_inspection_or_reload(
 
 def test_runner_refuses_to_admit_viewer_when_negative_baseline_changes(
     monkeypatch: Any,
-    forbidden_model_calls,
+    forbidden_model_calls: Mock,
 ) -> None:
     from playwright import sync_api
 
@@ -750,3 +807,56 @@ def test_runner_refuses_to_admit_viewer_when_negative_baseline_changes(
     assert ready == []
     assert context.page.goto_calls == []
     assert browser.closed and playwright.stopped
+
+
+@pytest.mark.parametrize("login_device", list(LoginDevice))
+def test_login_context_uses_server_owned_profile_and_configured_locale(
+    login_device: LoginDevice,
+) -> None:
+    settings = MobileWebSettings(locale="de-DE", timezone_id="Europe/Berlin")
+    runner = SystemRemoteBrowserRunner(RemoteAuthSettings(), settings)
+    browser = _RunnerBrowser()
+
+    runner._new_login_context(browser, DESCRIPTOR, login_device)  # noqa: SLF001
+
+    assert len(browser.context_options) == 1
+    options = browser.context_options[0]
+    if login_device is LoginDevice.MOBILE:
+        assert options == settings.context_options(DESCRIPTOR)
+    else:
+        assert options == {
+            "no_viewport": True,
+            "screen": {"width": 1280, "height": 800},
+            "is_mobile": False,
+            "has_touch": False,
+            "locale": "de-DE",
+            "timezone_id": "Europe/Berlin",
+        }
+
+
+@pytest.mark.parametrize("stop_reason", ["cancel", "shutdown", "expiry"])
+def test_runner_does_not_start_tools_for_stopped_attempt(
+    monkeypatch: Any, stop_reason: str,
+) -> None:
+    def tools_must_not_start(_self: Any) -> None:
+        raise AssertionError("Stopped attempts must not initialize the browser stack")
+
+    monkeypatch.setattr(SystemRemoteBrowserRunner, "_require_tools", tools_must_not_start)
+    cancel = threading.Event()
+    shutdown = threading.Event()
+    if stop_reason == "cancel":
+        cancel.set()
+    if stop_reason == "shutdown":
+        shutdown.set()
+    expires = datetime.now(UTC) + timedelta(minutes=-1 if stop_reason == "expiry" else 5)
+    runner = SystemRemoteBrowserRunner(RemoteAuthSettings(), MobileWebSettings())
+    callbacks: list[str] = []
+    result = runner.run(
+        RemoteBrowserWork("attempt", 42, "token", expires, cancel, LoginDevice.DESKTOP),
+        shutdown,
+        lambda: callbacks.append("ready"),
+        lambda: callbacks.append("finalizing") or True,
+    )
+    expected = RemoteAuthStatus.EXPIRED if stop_reason == "expiry" else RemoteAuthStatus.CANCELLED
+    assert result.status is expected
+    assert callbacks == []

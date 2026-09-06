@@ -1,6 +1,6 @@
 ---
 created: 2026-09-06T21:35:40Z
-bolt: 071-lifecycle-and-branch-hygiene
+bolt: 072-lifecycle-and-branch-hygiene
 ---
 
 # Obsolete Branch Deletion

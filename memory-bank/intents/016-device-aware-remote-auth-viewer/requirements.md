@@ -253,3 +253,42 @@ The owner requested implementation of a screen-adaptive Telegram `/connect` popu
 AI-DLC. This bounded presentation fix proceeds through local planning, implementation, and
 verification under that request. It extends the earlier fullscreen exclusion only for viewer
 presentation. Commit, push, merge, and deployment remain subject to separate explicit approval.
+
+## FR-9: Discover a coarse device class for interactive login
+
+The viewer selects desktop for known Telegram desktop clients, and for recognized Telegram Web
+clients with a fine pointer and no touch. Android/iOS/touch clients and unknown clients select
+mobile. Only the enum `desktop` or `mobile` is sent in the existing signed-identity exchange.
+Missing or malformed presentation hints fall back to mobile. No user agent, device identifier,
+raw screen dimensions or fingerprint is collected, logged or persisted.
+
+## FR-10: Bind discovery before browser launch
+
+Keep the attempt worker and single browser lease, but wait for a valid owner-bound exchange
+before launching display/browser processes. Bind the presentation once with the consumed launch
+capability. Cancel, expiry, purge, shutdown and same-user replacement must release a waiting
+attempt through the existing worker lifecycle; invalid/replayed/cross-user exchanges cannot launch.
+
+## FR-11: Adapt interactive Chromium while preserving mobile verification and checks
+
+Desktop login uses a bounded 1280x800 desktop Chromium context with matching display/window
+geometry. Mobile login keeps the configured Android context and existing 480x960 display.
+The existing locale/timezone, direct Booking.com navigation guards, noVNC transport and keyboard
+controls remain. Fullscreen/window resizing changes presentation only and never changes profile
+mid-login. This emulates device class on the VPS; it does not control the user's local browser
+or promise Safari/Firefox/iOS engine parity.
+
+The cookie-free baseline and both positive server-verification probes remain in fresh configured
+mobile contexts for either login profile. Persist only the exact verified candidate under the
+existing single-use receipt; checks and inventory retain their current mobile Chromium settings.
+A negative/challenged candidate remains unverified, never becomes success from desktop appearance,
+and cannot replace the stored session. Existing bounded retry/expiry guidance remains.
+
+## Device-adaptive login qualification
+
+Automated coverage must exercise device classification, signed exchange binding, waiting-worker
+races, both display/context profiles, mobile verification from a desktop producer, and existing
+lifecycle/input/security regressions. A local browser smoke must inspect actual Chromium contexts.
+A live desktop `/connect` followed by mobile inventory/check is required before production
+acceptance; HTTP verification alone does not prove rendered mobile checks. No new runtime
+dependency, schema, cost budget or browser engine is introduced.

@@ -1,6 +1,6 @@
 ---
 stage: model
-bolt: 069-retired-runtime
+bolt: 072-lifecycle-and-branch-hygiene
 created: 2026-09-06T21:28:53Z
 ---
 

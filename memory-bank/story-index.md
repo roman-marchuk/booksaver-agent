@@ -339,6 +339,7 @@ Story file paths are relative to `memory-bank/intents/{intent}/units/`.
 | Unit | Stories | Status |
 |------|---------|--------|
 | `001-device-aware-remote-auth-viewer` | 6 stories | Complete (bolts 030–031, 067) |
+| `002-device-adaptive-login-browser` | 3 stories | In progress (bolt 069) |
 
 ### 001-device-aware-remote-auth-viewer: Device-Aware Remote Authentication Viewer
 
@@ -350,6 +351,14 @@ Story file paths are relative to `memory-bank/intents/{intent}/units/`.
 | `US-104` | Preserve credential and desktop safety | Remote Auth Viewer | Complete | `001-device-aware-remote-auth-viewer/stories/004-preserve-credential-and-desktop-safety.md` |
 | `US-105` | Recover from an abandoned viewer | Remote Auth Viewer | Complete | `001-device-aware-remote-auth-viewer/stories/005-recover-from-abandoned-viewer.md` |
 | `US-173` | Enlarge the desktop viewer | Remote Auth Viewer | Complete | `001-device-aware-remote-auth-viewer/stories/006-enlarge-desktop-viewer.md` |
+
+### 002-device-adaptive-login-browser: Device-Adaptive Login Browser
+
+| Story | Title | Tag | Status | File |
+|-------|-------|-----|--------|------|
+| `US-175` | Discover login device class | Remote Auth Viewer | Complete | `002-device-adaptive-login-browser/stories/001-discover-login-device.md` |
+| `US-176` | Bind device before browser launch | Remote Auth Viewer | Complete | `002-device-adaptive-login-browser/stories/002-bind-device-before-browser-launch.md` |
+| `US-177` | Separate login profile from mobile checks | Remote Auth Viewer | Complete | `002-device-adaptive-login-browser/stories/003-separate-login-profile-from-mobile-checks.md` |
 
 ## 017-current-rebook-opportunities
 
@@ -574,22 +583,22 @@ Story file paths are relative to `memory-bank/intents/{intent}/units/`.
 
 | Story | Title | Tag | Status | File |
 |-------|-------|-----|--------|------|
-| `US-177` | Remove retired mutation workflows | Maintenance | Complete | `001-retired-runtime/stories/001-remove-retired-mutation-workflows.md` |
-| `US-178` | Remove legacy monitor scaffolding | Maintenance | Complete | `001-retired-runtime/stories/002-remove-legacy-monitor-scaffolding.md` |
+| `US-178` | Remove retired mutation workflows | Maintenance | Complete | `001-retired-runtime/stories/001-remove-retired-mutation-workflows.md` |
+| `US-179` | Remove legacy monitor scaffolding | Maintenance | Complete | `001-retired-runtime/stories/002-remove-legacy-monitor-scaffolding.md` |
 
 ### 002-shared-browser-and-tests
 
 | Story | Title | Tag | Status | File |
 |-------|-------|-----|--------|------|
-| `US-179` | Share browser runtime infrastructure | Maintenance | Complete | `002-shared-browser-and-tests/stories/001-share-browser-runtime-infrastructure.md` |
-| `US-180` | Consolidate test support | Maintenance | Complete | `002-shared-browser-and-tests/stories/002-consolidate-test-support.md` |
+| `US-180` | Share browser runtime infrastructure | Maintenance | Complete | `002-shared-browser-and-tests/stories/001-share-browser-runtime-infrastructure.md` |
+| `US-181` | Consolidate test support | Maintenance | Complete | `002-shared-browser-and-tests/stories/002-consolidate-test-support.md` |
 
 ### 003-lifecycle-and-branch-hygiene
 
 | Story | Title | Tag | Status | File |
 |-------|-------|-----|--------|------|
-| `US-181` | Align documentation and validation | Maintenance | Complete | `003-lifecycle-and-branch-hygiene/stories/001-align-documentation-and-validation.md` |
-| `US-182` | Delete obsolete branches | Maintenance | Complete | `003-lifecycle-and-branch-hygiene/stories/002-delete-obsolete-branches.md` |
+| `US-182` | Align documentation and validation | Maintenance | Complete | `003-lifecycle-and-branch-hygiene/stories/001-align-documentation-and-validation.md` |
+| `US-183` | Delete obsolete branches | Maintenance | Complete | `003-lifecycle-and-branch-hygiene/stories/002-delete-obsolete-branches.md` |
 
 ## Summary
 
@@ -610,7 +619,7 @@ Story file paths are relative to `memory-bank/intents/{intent}/units/`.
 | `013-authenticated-mobile-web-monitoring` | 1 | 6 | Complete (bolt 025; 867 tests) |
 | `014-remote-auth-display-reliability` | 1 | 2 | Complete (bolt 027; 871 tests) |
 | `015-authentication-boundary-hardening` | 2 | 4 | Complete (bolts 028–029; 883 tests) |
-| `016-device-aware-remote-auth-viewer` | 1 | 6 | Complete (bolts 030–031, 067; native fullscreen acceptance pending) |
+| `016-device-aware-remote-auth-viewer` | 2 | 9 | Complete (bolt 069; 1999 tests) |
 | `017-current-rebook-opportunities` | 1 | 3 | Complete (bolt 032; 909 tests) |
 | `018-conclusive-rebook-opportunity-lifecycle` | 1 | 3 | Complete (bolt 033; 937 tests) |
 | `019-booking-account-synchronization` | 2 | 7 | Complete (bolts 034–036; 959 tests) |
@@ -619,7 +628,7 @@ Story file paths are relative to `memory-bank/intents/{intent}/units/`.
 | `022-adaptive-booking-browser-resilience` | 3 | 13 | Complete (bolts 041–049) |
 | `023-replaceable-agentic-browser-executor` | 9 | 31 | In construction (bolt 068 complete; price qualification bolt 052 active, bolt 055 blocked) |
 
-| `024-repository-streamlining` | 3 | 6 | Complete locally (bolts 069–071) |
+| `024-repository-streamlining` | 3 | 6 | Complete locally (bolts 070–072) |
 
-All 180 stories (176 complete; remaining stories retain the statuses above)
+All 183 stories (179 complete; remaining stories retain the statuses above)
 are assigned exactly once.

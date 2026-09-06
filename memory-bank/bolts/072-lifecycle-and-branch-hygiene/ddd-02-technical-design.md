@@ -1,12 +1,12 @@
 ---
 stage: design
-bolt: 069-retired-runtime
+bolt: 072-lifecycle-and-branch-hygiene
 created: 2026-09-06T21:28:53Z
 ---
 
 # Technical Design
 
-Delete unused CRUD/rebooking modules and dedicated feature tests; migrate surviving tests to explicit test-only booking seeding. Remove unused repository mutation/rebook APIs while retaining SQL compatibility cleanup/migrations. Delete unused manage-page monitor and global-session adapters; simplify current monitor constructor and tests around run_authenticated. Remove dead wrappers, lease aliases and runtime cache deletion without weakening type/value checks.
+Read canonical memory-bank.yaml in existing validators, traverse declared timestamp fields including stage arrays, validate intent-scoped unit/bolt links and index membership; post-fix revalidate and fail on residual errors. Keep check entrypoints small and document them. Remove current-state counters from prose; annotate historical metadata uncertainty without inventing dates. For branch deletion, record names/SHAs and policy, reject moved refs, preserve active checkouts and untracked work, and verify remote/local absence.
 
 ## ADR analysis
 

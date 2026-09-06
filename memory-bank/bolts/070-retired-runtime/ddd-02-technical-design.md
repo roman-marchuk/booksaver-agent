@@ -1,12 +1,12 @@
 ---
 stage: design
-bolt: 070-shared-browser-and-tests
+bolt: 070-retired-runtime
 created: 2026-09-06T21:28:53Z
 ---
 
 # Technical Design
 
-Extract a shared Browser Use session host from inventory internals with public narrow lifecycle methods and a shared Agent configuration factory; capability-specific registries and output mapping remain separate. Consolidate pure normalization/provenance functions and packaged replay corpus. Use small explicit test builders and constructor spies rather than generic frameworks or reduced coverage.
+Delete unused CRUD/rebooking modules and dedicated feature tests; migrate surviving tests to explicit test-only booking seeding. Remove unused repository mutation/rebook APIs while retaining SQL compatibility cleanup/migrations. Delete unused manage-page monitor and global-session adapters; simplify current monitor constructor and tests around run_authenticated. Remove dead wrappers, lease aliases and runtime cache deletion without weakening type/value checks.
 
 ## ADR analysis
 

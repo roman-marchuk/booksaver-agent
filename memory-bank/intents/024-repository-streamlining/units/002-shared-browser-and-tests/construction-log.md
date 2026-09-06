@@ -2,7 +2,7 @@
 
 ## 2026-09-06T21:28:53Z — Implementation started
 
-Domain model and technical design document the user's approved audit recommendations. ADR analysis preserves existing decisions. Bolt 070-shared-browser-and-tests is in implementation; no completion or test result is claimed yet.
+Domain model and technical design document the user's approved audit recommendations. ADR analysis preserves existing decisions. Bolt 071-shared-browser-and-tests is in implementation; no completion or test result is claimed yet.
 
 ## 2026-09-06T22:06:37Z — Construction completed
 

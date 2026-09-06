@@ -32,7 +32,10 @@ decisions indexed in `standards/decision-index.md`.
   booking owner's session and records authenticated/Genius provenance (ADR-025).
 - **Remote authentication (opt-in)**: stdlib `http.server` application behind a Caddy TLS sidecar;
   transient headed Playwright Chromium on Xvfb, x11vnc bound to loopback, token-gated websockify,
-  and noVNC ES modules (ADR-026). Only Caddy publishes ports 80/443.
+  and noVNC ES modules (ADR-026). The signed viewer exchange selects desktop Chromium (1280x800)
+  or the configured Android Chromium login profile; unknown hints default to mobile (ADR-047).
+  Server-session verification and checks retain the configured mobile profile.
+  Only Caddy publishes ports 80/443.
 - **LLM integration**: official `anthropic` SDK with the fixed adaptive Sonnet 5/diagnostic Opus 5
   portfolio and `BOOKSAVER_LLM_API_KEY` (ADRs 009 and 031). The agentic executor permits Sonnet 5
   only for semantic and computer-use control; Opus never controls the browser. Calls share exact

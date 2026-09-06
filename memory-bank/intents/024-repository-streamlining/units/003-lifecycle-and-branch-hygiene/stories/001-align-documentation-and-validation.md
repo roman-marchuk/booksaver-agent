@@ -5,11 +5,11 @@ intent: 024-repository-streamlining
 status: complete
 priority: must
 created: "2026-09-06T21:28:53Z"
-assigned_bolt: 071-lifecycle-and-branch-hygiene
+assigned_bolt: 072-lifecycle-and-branch-hygiene
 implemented: true
 ---
 
-# US-181: Align Documentation And Validation
+# US-182: Align Documentation And Validation
 
 As the owner, I want the reviewed cleanup completed so current behavior has one clear implementation and useful evidence.
 

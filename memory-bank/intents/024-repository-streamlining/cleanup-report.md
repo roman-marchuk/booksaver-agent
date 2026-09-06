@@ -1,8 +1,10 @@
 # Repository Cleanup Handoff
 
-Completed locally on `codex/streamline-retired-code`, based on main `4b52ea3` (including PR #47).
-The original checkout and other active tasks' changes were preserved. No cleanup code was
-committed, pushed, merged or deployed. The user-authorized branch deletion is complete.
+Construction completed on `codex/streamline-retired-code`; the reviewed cleanup is now committed
+and submitted in PR #49 under the owner's subsequent release authorization. Current main PR #48
+was integrated while preserving other tasks' work. Merge/deployment are blocked by Bugbot usage
+limits; see the [release preflight](../../operations/releases/repository-streamlining-preflight.md).
+The user-authorized branch deletion is complete.
 
 ## Result
 
@@ -34,10 +36,10 @@ CodeVerificationReceipt and negative-inventory protections remain. Historical AD
 
 ## Verification
 
-- **1,726 Python tests passed**, 52 existing schedule deprecation warnings, 25.46 seconds.
+- **1,768 Python tests passed** after PR #48 integration, 52 existing schedule deprecation warnings, 36.26 seconds.
 - **Ruff passed; strict mypy passed over 115 source files.**
 - **16 Node policy/validator tests passed.**
-- Artifact validation: **0 errors**; status integrity: **0 inconsistencies**, 71 bolts/24 intents.
+- Artifact validation: **0 errors**; status integrity: **0 inconsistencies**, 72 bolts/24 intents.
 - CLI help using `PYTHONPATH=src python3 -m booksaver.cli --help` and diff checks passed.
 - Built a wheel without resolving dependencies and installed it in an isolated directory.
   All six replay fixtures loaded; retired rebooking/monitor/plaintext-session modules were absent.
@@ -52,16 +54,16 @@ CodeVerificationReceipt and negative-inventory protections remain. Historical AD
 Stagehand and deterministic rollback remain under ADR-043. Historical rebook tables remain only
 for old database compatibility and purge; no destructive schema migration was introduced.
 
-The validator reports 459 historical warnings: 454 literal millisecond-precision timestamps and
+The validator reports 471 historical warnings: 466 literal millisecond-precision timestamps and
 five legacy name-only stage lists whose chronology cannot be reconstructed. These are explicit
 warnings, not false clean evidence; widespread cosmetic history rewrites were avoided. Future
 serializer updates preserve canonical second precision.
 
 This is offline code/packaging verification, not new live Booking.com qualification. No production
-services or account sessions were changed. Code publication/deployment requires separate
-authorization. Current active branches and their worktree files remain available.
+services or account sessions were changed. Code publication/deployment now has owner
+authorization, subject to the unresolved merge gate. Current active branches and their worktree files remain available.
 
-See [branch deletion evidence](../../bolts/071-lifecycle-and-branch-hygiene/branch-deletion-report.md)
-and the test reports for Bolts [069](../../bolts/069-retired-runtime/ddd-03-test-report.md),
-[070](../../bolts/070-shared-browser-and-tests/ddd-03-test-report.md), and
-[071](../../bolts/071-lifecycle-and-branch-hygiene/ddd-03-test-report.md).
+See [branch deletion evidence](../../bolts/072-lifecycle-and-branch-hygiene/branch-deletion-report.md)
+and the test reports for Bolts [069](../../bolts/070-retired-runtime/ddd-03-test-report.md),
+[070](../../bolts/071-shared-browser-and-tests/ddd-03-test-report.md), and
+[071](../../bolts/072-lifecycle-and-branch-hygiene/ddd-03-test-report.md).

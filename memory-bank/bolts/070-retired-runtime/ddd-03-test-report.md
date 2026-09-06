@@ -1,12 +1,12 @@
 ---
 stage: test
-bolt: 070-shared-browser-and-tests
+bolt: 070-retired-runtime
 created: 2026-09-06T22:05:17Z
 ---
 
 # Test Report
 
-Independent review preserved the session/network/action guards, isolated hosts, code-owned authentication and refresh, model budget accounting, result validation, and cleanup. Its one finding restored include_extracted_content_only_once=True with a contract assertion. Key-resolution tests now isolate ambient credentials. Remote-auth tests cover runtime assembly and positive/negative server verification with model sentinels.
+Retired mutation/global-session imports have no surviving callers. Account-sync, per-user isolation, historical-table purge, savings, notification and check-history coverage remains. The independent review found stale methods in a test fake; those were removed and notification/savings tests passed.
 
 ## Integrated evidence
 

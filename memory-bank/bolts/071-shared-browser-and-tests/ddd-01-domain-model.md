@@ -1,6 +1,6 @@
 ---
 stage: model
-bolt: 070-shared-browser-and-tests
+bolt: 071-shared-browser-and-tests
 created: 2026-09-06T21:28:53Z
 ---
 

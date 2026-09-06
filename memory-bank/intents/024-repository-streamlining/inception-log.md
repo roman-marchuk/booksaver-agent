@@ -6,4 +6,4 @@ The existing audit and user implementation directive establish the scope. Preser
 
 ## 2026-09-06T22:06:37Z — Approved cleanup delivered locally
 
-The reviewed scope completed through Bolts 069–071. The only integration expansion was adapting newly merged PR #47 tests to the retired constructor removal; its diagnostics behavior remains. Original branch work and files are preserved. See cleanup-report.md for every audit disposition and quality evidence.
+The reviewed scope completed through Bolts 070–072. The only integration expansion was adapting newly merged PR #47 tests to the retired constructor removal; its diagnostics behavior remains. Original branch work and files are preserved. See cleanup-report.md for every audit disposition and quality evidence.

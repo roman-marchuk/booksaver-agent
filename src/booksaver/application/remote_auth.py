@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 from booksaver.domain.dom_incident import IncidentDraft
 from booksaver.domain.remote_auth import (
     AttemptLaunch,
+    LoginDevice,
     RemoteAuthFailure,
     RemoteAuthSettings,
     RemoteAuthStatus,
@@ -52,6 +53,7 @@ class RemoteBrowserWork:
     websocket_token: str
     expires_at: datetime
     cancel_event: threading.Event
+    login_device: LoginDevice = LoginDevice.MOBILE
 
 
 @dataclass(frozen=True)
@@ -115,6 +117,8 @@ class _Attempt:
     viewer_digest: bytes | None = None
     failure: RemoteAuthFailure | None = None
     cancel_event: threading.Event = field(default_factory=threading.Event)
+    viewer_ready: threading.Event = field(default_factory=threading.Event)
+    login_device: LoginDevice = LoginDevice.MOBILE
     worker: threading.Thread | None = None
     suppress_cancel_notification: bool = False
     failure_incident_policy: _FailureIncidentPolicy = _FailureIncidentPolicy.PUBLISH
@@ -286,7 +290,12 @@ class RemoteAuthenticationManager:
             attempt = self._attempt_for_launch_locked(launch_token, now)
             return attempt.telegram_user_id
 
-    def exchange(self, launch_token: str, telegram_user_id: int) -> ViewerGrant:
+    def exchange(
+        self,
+        launch_token: str,
+        telegram_user_id: int,
+        login_device: LoginDevice = LoginDevice.MOBILE,
+    ) -> ViewerGrant:
         now = self._clock()
         with self._lock:
             attempt = self._attempt_for_launch_locked(launch_token, now)
@@ -298,6 +307,8 @@ class RemoteAuthenticationManager:
             self._viewer_index[viewer_digest] = attempt.attempt_id
             self._launch_index.pop(attempt.launch_digest, None)
             attempt.launch_digest = b""
+            attempt.login_device = LoginDevice.from_hint(login_device)
+            attempt.viewer_ready.set()
             return ViewerGrant(viewer_token, attempt.expires_at)
 
     def viewer_state(self, session_token: str) -> ViewerState:
@@ -368,12 +379,26 @@ class RemoteAuthenticationManager:
     def _run_attempt(self, attempt_id: str) -> None:
         with self._lock:
             attempt = self._attempts[attempt_id]
+        # Keep ownership of the worker and browser lease while awaiting the
+        # authenticated exchange; cancellation uses the ordinary cleanup path.
+        while True:
+            with self._lock:
+                self._expire_locked(self._clock())
+                if (
+                    attempt.viewer_ready.is_set()
+                    or attempt.cancel_event.is_set()
+                    or self._daemon_stop_event.is_set()
+                ):
+                    break
+            attempt.viewer_ready.wait(0.1)
+        with self._lock:
             work = RemoteBrowserWork(
                 attempt_id=attempt.attempt_id,
                 telegram_user_id=attempt.telegram_user_id,
                 websocket_token=attempt.websocket_token,
                 expires_at=attempt.expires_at,
                 cancel_event=attempt.cancel_event,
+                login_device=attempt.login_device,
             )
 
         def _ready() -> None:
@@ -401,12 +426,17 @@ class RemoteAuthenticationManager:
                 return True
 
         try:
-            result = self._runner.run(
-                work,
-                self._daemon_stop_event,
-                _ready,
-                _finalizing,
-            )
+            if self._clock() >= work.expires_at:
+                result = RemoteBrowserResult(RemoteAuthStatus.EXPIRED)
+            elif work.cancel_event.is_set() or self._daemon_stop_event.is_set():
+                result = RemoteBrowserResult(RemoteAuthStatus.CANCELLED)
+            else:
+                result = self._runner.run(
+                    work,
+                    self._daemon_stop_event,
+                    _ready,
+                    _finalizing,
+                )
         except Exception as exc:
             logger.warning(
                 "Remote authentication runner ended with %s",
