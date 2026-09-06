@@ -15,7 +15,7 @@ from booksaver.application.remote_auth import (
     RemoteBrowserWork,
 )
 from booksaver.domain.dom_incident import IncidentDraft
-from booksaver.domain.remote_auth import RemoteAuthSettings, RemoteAuthStatus
+from booksaver.domain.remote_auth import LoginDevice, RemoteAuthSettings, RemoteAuthStatus
 
 
 class ControlledRunner:
@@ -31,9 +31,9 @@ class ControlledRunner:
         on_ready: object,
         on_finalizing: object,
     ) -> RemoteBrowserResult:
-        self.started.set()
         assert callable(on_ready)
         on_ready()
+        self.started.set()
         while not self.release.wait(0.01):
             if work.cancel_event.is_set() or daemon_stop_event.is_set():
                 return RemoteBrowserResult(RemoteAuthStatus.CANCELLED)
@@ -64,12 +64,12 @@ class SequentialRunner:
         on_finalizing: object,
     ) -> RemoteBrowserResult:
         call = RunnerCall(work)
+        assert callable(on_ready)
+        on_ready()
         with self._condition:
             call_index = len(self.calls)
             self.calls.append(call)
             self._condition.notify_all()
-        assert callable(on_ready)
-        on_ready()
         while not call.release.wait(0.005):
             if daemon_stop_event.is_set():
                 return RemoteBrowserResult(RemoteAuthStatus.CANCELLED)
@@ -172,13 +172,13 @@ def test_manager_binds_single_use_launch_to_user_and_captures_once() -> None:
     )
 
     launch = manager.create(123, 123)
-    assert runner.started.wait(1)
     token = launch.url.rsplit("/", 1)[-1]
     assert manager.expected_telegram_user(token) == 123
     with pytest.raises(RemoteAuthDenied):
         manager.exchange(token, 999)
 
     grant = manager.exchange(token, 123)
+    assert runner.started.wait(1)
     with pytest.raises(RemoteAuthDenied):
         manager.exchange(token, 123)
     state = manager.viewer_state(grant.session_token)
@@ -233,7 +233,8 @@ def test_connection_notice_precedes_immediate_inventory_completion() -> None:
         on_success=refresh,
         browser_gate=gate,
     )
-    manager.create(123, 123)
+    launch = manager.create(123, 123)
+    manager.exchange(launch.url.rsplit("/", 1)[-1], 123)
     runner.release.set()
     assert completed.wait(1)
     manager.stop_all()
@@ -397,7 +398,8 @@ def test_administrative_cancel_still_wins_during_finalizing() -> None:
         lambda _chat_id, _text: None,
     )
 
-    manager.create(123, 123)
+    launch = manager.create(123, 123)
+    manager.exchange(launch.url.rsplit("/", 1)[-1], 123)
     assert runner.finalizing.wait(1)
     assert manager.cancel_for_telegram_user(123)
     runner.release.set()
@@ -478,7 +480,8 @@ def test_privacy_erasure_suppresses_late_failure_incident() -> None:
         incident_sink=incidents.append,
     )
 
-    manager.create(123, 123)
+    launch = manager.create(123, 123)
+    manager.exchange(launch.url.rsplit("/", 1)[-1], 123)
     assert runner.started.wait(1)
     assert manager.cancel_for_telegram_user(123)
     runner.release.set()
@@ -500,7 +503,8 @@ def test_shutdown_suppresses_late_failure_incident() -> None:
         incident_sink=incidents.append,
     )
 
-    manager.create(123, 123)
+    launch = manager.create(123, 123)
+    manager.exchange(launch.url.rsplit("/", 1)[-1], 123)
     assert runner.started.wait(1)
     manager.stop_all(join_timeout=0)
     runner.release.set()
@@ -598,9 +602,9 @@ def test_manager_preserves_expired_state_until_worker_teardown() -> None:
         clock=lambda: current[0],
     )
     launch = manager.create(123, 123)
-    assert runner.started.wait(1)
     token = launch.url.rsplit("/", 1)[-1]
     grant = manager.exchange(token, 123)
+    assert runner.started.wait(1)
     current[0] = now + timedelta(seconds=121)
     state = manager.viewer_state(grant.session_token)
     assert state.status is RemoteAuthStatus.EXPIRED
@@ -624,8 +628,8 @@ def test_manager_cancellation_is_idempotent_and_never_captures() -> None:
         lambda _chat_id, _text: None,
     )
     launch = manager.create(123, 123)
-    assert runner.started.wait(1)
     grant = manager.exchange(launch.url.rsplit("/", 1)[-1], 123)
+    assert runner.started.wait(1)
     assert manager.cancel(grant.session_token)
     assert not manager.cancel(grant.session_token)
     runner.release.set()
@@ -646,11 +650,10 @@ def test_same_user_connect_immediately_replaces_active_attempt() -> None:
         browser_gate=gate,
     )
     first = manager.create(123, 123)
-    runner.wait_for_call(0)
     first_grant = manager.exchange(first.url.rsplit("/", 1)[-1], 123)
+    runner.wait_for_call(0)
 
     replacement = manager.create(123, 123)
-    runner.wait_for_call(1)
 
     assert replacement.url != first.url
     assert manager.viewer_state(first_grant.session_token).status is RemoteAuthStatus.CANCELLED
@@ -659,6 +662,7 @@ def test_same_user_connect_immediately_replaces_active_attempt() -> None:
         replacement.url.rsplit("/", 1)[-1],
         123,
     )
+    runner.wait_for_call(1)
     assert (
         manager.viewer_state(replacement_grant.session_token).status is RemoteAuthStatus.CONNECTED
     )
@@ -680,7 +684,8 @@ def test_same_user_replacement_reserves_gate_during_worker_teardown() -> None:
         browser_gate=gate,
         replacement_join_timeout=1.0,
     )
-    manager.create(123, 123)
+    launch = manager.create(123, 123)
+    manager.exchange(launch.url.rsplit("/", 1)[-1], 123)
     first_call = runner.wait_for_call(0)
     replacements: list[str] = []
 
@@ -692,8 +697,9 @@ def test_same_user_replacement_reserves_gate_during_worker_teardown() -> None:
     first_call.release.set()
     thread.join(timeout=1)
     assert not thread.is_alive()
-    runner.wait_for_call(1)
     assert len(replacements) == 1
+    manager.exchange(replacements[0].rsplit("/", 1)[-1], 123)
+    runner.wait_for_call(1)
     assert gate.locked()
     manager.stop_all()
 
@@ -710,8 +716,8 @@ def test_same_user_connect_replaces_pagehide_cancelled_worker() -> None:
         replacement_join_timeout=1.0,
     )
     first = manager.create(123, 123)
-    first_call = runner.wait_for_call(0)
     grant = manager.exchange(first.url.rsplit("/", 1)[-1], 123)
+    first_call = runner.wait_for_call(0)
     assert manager.cancel(grant.session_token)
     replacements: list[str] = []
     thread = threading.Thread(target=lambda: replacements.append(manager.create(123, 123).url))
@@ -720,6 +726,7 @@ def test_same_user_connect_replaces_pagehide_cancelled_worker() -> None:
     thread.join(timeout=1)
 
     assert len(replacements) == 1
+    manager.exchange(replacements[0].rsplit("/", 1)[-1], 123)
     runner.wait_for_call(1)
     assert messages == []
     manager.stop_all()
@@ -737,7 +744,8 @@ def test_same_user_replacement_timeout_never_starts_second_browser() -> None:
         browser_gate=gate,
         replacement_join_timeout=0.01,
     )
-    manager.create(123, 123)
+    launch = manager.create(123, 123)
+    manager.exchange(launch.url.rsplit("/", 1)[-1], 123)
     first_call = runner.wait_for_call(0)
 
     with pytest.raises(RemoteAuthBusy, match="still closing"):
@@ -752,7 +760,8 @@ def test_same_user_replacement_timeout_never_starts_second_browser() -> None:
         threading.Event().wait(0.01)
     assert not gate.locked()
 
-    manager.create(123, 123)
+    launch = manager.create(123, 123)
+    manager.exchange(launch.url.rsplit("/", 1)[-1], 123)
     runner.wait_for_call(1)
     manager.stop_all()
 
@@ -766,7 +775,8 @@ def test_different_user_cannot_reclaim_active_attempt() -> None:
         lambda _user_id, _raw: None,
         lambda _chat_id, _text: None,
     )
-    manager.create(123, 123)
+    launch = manager.create(123, 123)
+    manager.exchange(launch.url.rsplit("/", 1)[-1], 123)
     first_call = runner.wait_for_call(0)
 
     with pytest.raises(RemoteAuthBusy, match="Another Booking.com login"):
@@ -788,7 +798,8 @@ def test_two_racing_same_user_connects_leave_one_browser_active() -> None:
         lambda _chat_id, _text: None,
         browser_gate=gate,
     )
-    manager.create(123, 123)
+    launch = manager.create(123, 123)
+    manager.exchange(launch.url.rsplit("/", 1)[-1], 123)
     runner.wait_for_call(0)
     barrier = threading.Barrier(3)
     launches: list[str] = []
@@ -804,11 +815,22 @@ def test_two_racing_same_user_connects_leave_one_browser_active() -> None:
     for thread in threads:
         thread.join(timeout=2)
 
-    runner.wait_for_call(2)
     assert all(not thread.is_alive() for thread in threads)
     assert len(launches) == 2
     assert len(set(launches)) == 2
-    assert len(runner.calls) == 3
+    valid_tokens = []
+    for url in launches:
+        token = url.rsplit("/", 1)[-1]
+        try:
+            manager.expected_telegram_user(token)
+        except RemoteAuthDenied:
+            continue
+        valid_tokens.append(token)
+    assert len(valid_tokens) == 1
+    assert len(runner.calls) == 1
+    manager.exchange(valid_tokens[0], 123)
+    runner.wait_for_call(1)
+    assert len(runner.calls) == 2
     assert gate.locked()
     manager.stop_all()
 
@@ -824,7 +846,8 @@ def test_manager_target_cancellation_is_scoped_and_prevents_capture() -> None:
         lambda _chat_id, _text: None,
     )
 
-    manager.create(123, 123)
+    launch = manager.create(123, 123)
+    manager.exchange(launch.url.rsplit("/", 1)[-1], 123)
     assert runner.started.wait(1)
 
     assert not manager.cancel_for_telegram_user(456)
@@ -854,7 +877,8 @@ def test_manager_target_cancellation_waits_for_completed_capture() -> None:
         _capture,
         lambda _chat_id, _text: None,
     )
-    manager.create(123, 123)
+    launch = manager.create(123, 123)
+    manager.exchange(launch.url.rsplit("/", 1)[-1], 123)
     assert runner.started.wait(1)
     runner.release.set()
     assert capture_started.wait(1)
@@ -949,3 +973,97 @@ def test_terminal_viewer_capability_is_pruned_at_attempt_expiry() -> None:
     current[0] = now + timedelta(seconds=121)
     with pytest.raises(RemoteAuthDenied):
         manager.viewer_state(grant.session_token)
+
+
+@pytest.mark.parametrize("ending", ["cancel", "expire", "shutdown", "daemon_stop"])
+def test_unopened_attempt_never_launches_and_releases_lease(ending: str) -> None:
+    now = datetime(2026, 9, 6, tzinfo=UTC)
+    current = [now]
+    runner = ControlledRunner(RemoteBrowserResult(RemoteAuthStatus.FAILED))
+    gate = threading.Lock()
+    daemon_stop = threading.Event()
+    captured: list[str] = []
+    manager = RemoteAuthenticationManager(
+        _settings(session_timeout_seconds=120),
+        runner,
+        daemon_stop,
+        lambda _user_id, raw: captured.append(raw),
+        lambda _chat_id, _text: None,
+        browser_gate=gate,
+        clock=lambda: current[0],
+    )
+    launch = manager.create(123, 123)
+    token = launch.url.rsplit("/", 1)[-1]
+    assert gate.locked()
+    assert not runner.started.wait(0.05)
+    with pytest.raises(RemoteAuthBusy):
+        manager.create(456, 456)
+
+    if ending == "cancel":
+        assert manager.cancel_for_telegram_user(123)
+    elif ending == "expire":
+        current[0] = now + timedelta(seconds=121)
+    elif ending == "shutdown":
+        manager.stop_all()
+    else:
+        daemon_stop.set()
+
+    for _ in range(100):
+        if not gate.locked():
+            break
+        threading.Event().wait(0.01)
+    assert not gate.locked()
+    assert not runner.started.is_set()
+    assert captured == []
+    with pytest.raises(RemoteAuthDenied):
+        manager.exchange(token, 123, login_device=LoginDevice.DESKTOP)
+    manager.stop_all()
+
+
+def test_replacing_unopened_attempt_only_launches_authenticated_replacement() -> None:
+    runner = SequentialRunner()
+    gate = threading.Lock()
+    manager = RemoteAuthenticationManager(
+        _settings(),
+        runner,
+        threading.Event(),
+        lambda _user_id, _raw: None,
+        lambda _chat_id, _text: None,
+        browser_gate=gate,
+    )
+    first = manager.create(123, 123)
+    replacement = manager.create(123, 123)
+    assert runner.calls == []
+    assert gate.locked()
+    with pytest.raises(RemoteAuthDenied):
+        manager.exchange(first.url.rsplit("/", 1)[-1], 123, login_device=LoginDevice.DESKTOP)
+    manager.exchange(replacement.url.rsplit("/", 1)[-1], 123)
+    call = runner.wait_for_call(0)
+    assert call.work.login_device is LoginDevice.MOBILE
+    assert len(runner.calls) == 1
+    manager.stop_all()
+    assert not gate.locked()
+
+
+def test_device_is_bound_only_by_owner_exchange_and_cannot_be_replayed() -> None:
+    runner = SequentialRunner()
+    manager = RemoteAuthenticationManager(
+        _settings(),
+        runner,
+        threading.Event(),
+        lambda _user_id, _raw: None,
+        lambda _chat_id, _text: None,
+    )
+    launch = manager.create(123, 123)
+    token = launch.url.rsplit("/", 1)[-1]
+    with pytest.raises(RemoteAuthDenied):
+        manager.exchange(token, 456, login_device=LoginDevice.MOBILE)
+    assert runner.calls == []
+    manager.exchange(token, 123, login_device=LoginDevice.DESKTOP)
+    call = runner.wait_for_call(0)
+    assert call.work.login_device is LoginDevice.DESKTOP
+    with pytest.raises(RemoteAuthDenied):
+        manager.exchange(token, 123, login_device=LoginDevice.MOBILE)
+    assert call.work.login_device is LoginDevice.DESKTOP
+    assert len(runner.calls) == 1
+    manager.stop_all()

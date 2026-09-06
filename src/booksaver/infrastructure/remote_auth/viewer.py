@@ -30,6 +30,7 @@ body{height:var(--app-height);display:flex;flex-direction:column;background:#101
 #viewer{flex:1;min-height:0;position:relative;overflow:auto;background:#000;overscroll-behavior:none}
 #screen{width:100%;height:100%;min-height:100%;touch-action:none}
 body.keyboard-open #screen{height:auto;min-height:max(100%,200vw)}
+body.desktop-login.keyboard-open #screen{min-height:max(100%,62.5vw)}
 #dock{display:flex;flex-shrink:0;flex-wrap:wrap;gap:6px;
  padding:7px 8px calc(7px + var(--safe-bottom));background:#182633}
 button{min-width:44px;min-height:44px;margin:0;padding:8px 10px;border:1px solid #58728a;
@@ -83,6 +84,12 @@ const touchFirst=['android','android_x','ios'].includes(platform)||
  ('ontouchstart' in window)||navigator.maxTouchPoints>0||
  (window.matchMedia&&window.matchMedia('(pointer:coarse)').matches);
 document.body.classList.toggle('touch-first',touchFirst);
+// This is a presentation hint, never identity evidence or a browser fingerprint.
+const nativeDesktop=['tdesktop','macos','unigram'].includes(platform);
+const knownWeb=['web','webk','weba'].includes(platform);
+const finePointer=window.matchMedia&&window.matchMedia('(pointer:fine)').matches;
+const loginDevice=nativeDesktop||(knownWeb&&finePointer&&!touchFirst)?'desktop':'mobile';
+document.body.classList.toggle('desktop-login',loginDevice==='desktop');
 let rfb=null;
 let touchKeyboard=null;
 let KeyTable=null;
@@ -345,7 +352,7 @@ async function start(){
   'Open this page from the button in your private Telegram chat.');
  await jsonRequest('/api/connect/exchange',{method:'POST',
   headers:{'Content-Type':'application/json'},
-  body:JSON.stringify({launch_token:launchToken,init_data:tg.initData})});
+  body:JSON.stringify({launch_token:launchToken,init_data:tg.initData,login_device:loginDevice})});
  viewerAuthorized=true;
  await poll();
 }

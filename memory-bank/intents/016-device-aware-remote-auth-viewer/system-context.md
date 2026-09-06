@@ -94,3 +94,8 @@ flowchart LR
 Telegram fullscreen capabilities and safe-area values remain untrusted presentation hints.
 Desktop enlargement uses the existing host bridge and never changes server browser dimensions,
 identity exchange, navigation authority, or session ownership.
+
+## Adaptive login extension
+
+A coarse device preference travels with the existing signed-identity exchange. It selects only
+the interactive Chromium context; the mobile verification and checking boundary is unchanged.

@@ -3,12 +3,27 @@ from __future__ import annotations
 import hmac
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import Enum
+from enum import Enum, StrEnum
 from pathlib import Path
 from urllib.parse import urlparse
 
 REMOTE_AUTH_SERVER_CONTRACT_VERSION = "booking-account-session-v2"
 REMOTE_AUTH_SERVER_VERIFIER = "booking_server_session_v2"
+
+
+class LoginDevice(StrEnum):
+    """Untrusted presentation hint restricted to server-owned Chromium profiles."""
+
+    MOBILE = "mobile"
+    DESKTOP = "desktop"
+
+    @classmethod
+    def from_hint(cls, value: object) -> LoginDevice:
+        return cls.DESKTOP if isinstance(value, str) and value == "desktop" else cls.MOBILE
+
+    @property
+    def display_size(self) -> tuple[int, int]:
+        return (1280, 800) if self is LoginDevice.DESKTOP else (480, 960)
 
 
 class RemoteAuthStatus(Enum):

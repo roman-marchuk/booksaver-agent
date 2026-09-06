@@ -15,7 +15,7 @@ from booksaver.application.remote_auth import (
     RemoteAuthDenied,
     RemoteAuthenticationManager,
 )
-from booksaver.domain.remote_auth import RemoteAuthSettings
+from booksaver.domain.remote_auth import LoginDevice, RemoteAuthSettings
 
 from .telegram_init_data import TelegramInitDataError, TelegramInitDataVerifier
 from .viewer import build_viewer_document
@@ -100,7 +100,10 @@ class RemoteAuthHttpApp:
             init_data = str(data["init_data"])
             expected_user = self._manager.expected_telegram_user(launch_token)
             identity = self._verifier.verify(init_data, expected_user)
-            grant = self._manager.exchange(launch_token, identity.telegram_user_id)
+            grant = self._manager.exchange(
+                launch_token, identity.telegram_user_id,
+                login_device=LoginDevice.from_hint(data.get("login_device")),
+            )
         except (
             KeyError,
             TypeError,

@@ -1,6 +1,6 @@
 ---
-last_updated: 2026-09-03T23:40:07Z
-total_decisions: 46
+last_updated: 2026-09-06T21:44:35Z
+total_decisions: 47
 ---
 
 # Decision Index
@@ -474,3 +474,10 @@ Use this to find relevant prior decisions when working on related features.
 - **Path**: `bolts/001-core-local-data/adr-001-sqlite-local-persistence.md`
 - **Summary**: BookSaver Agent needs durable local storage with domain invariants enforced at the storage layer. Use SQLite (stdlib `sqlite3`) as the single local store — one file at `{data_directory}/booksaver.db` with UNIQUE and CHECK constraints matching domain rules.
 - **Read when**: Extending the database schema (e.g. Unit 2 adding check_history columns); writing or modifying repository implementations; designing data migrations; working on persistence invariant tests.
+
+### ADR-047: Adaptive login with mobile verification
+- **Status**: accepted
+- **Bolt**: 069-device-adaptive-login-browser
+- **Path**: `bolts/069-device-adaptive-login-browser/adr-047-adaptive-login-with-mobile-verification.md`
+- **Summary**: Device discovery selects only interactive desktop/mobile Chromium after signed exchange; verification and checks stay mobile.
+- **Read when**: Changing remote login presentation, device discovery, deferred launch or profile/session compatibility.
