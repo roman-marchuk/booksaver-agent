@@ -11,7 +11,7 @@ flowchart TB
     Telegram["Telegram /checknow"] --> Coordinator
     Telegram --> Connect["Telegram /connect"]
     Connect --> AuthGateway["HTTPS Mini App gateway"]
-    AuthGateway --> LoginBrowser["Transient headed mobile browser"]
+    AuthGateway --> LoginBrowser["Transient device-adaptive Chromium"]
     LoginBrowser --> SessionVault["Encrypted per-user session vault"]
     SessionVault --> Inventory["Booking.com Account Inventory"]
     Inventory --> Store["LocalPersistence (+ sync audit/check traces)"]
@@ -64,12 +64,17 @@ flowchart TB
   visible reservation and derive monitorable booking projections only for reason-coded eligible rows.
 - The opt-in `/connect` adapter is the narrow exception to outbound-only operation (ADR-026). A
   signed Telegram Mini App reaches a stdlib HTTP gateway behind Caddy TLS, drives one transient
-  headed mobile browser through token-gated noVNC/websockify, and treats that page only as a cookie
+  headed desktop or mobile Chromium browser through token-gated noVNC/websockify, and treats that page only as a cookie
   producer. A versioned isolated Booking server contract accepts exact negative controls—including
   the cookie-free edge-pending tuple—without closing the viewer, and captures cookies only after two
   exact positive probes issue a receipt bound to the immutable snapshot (ADR-035). It then tears
   down. The flow shares the same global browser lease as checks. No endpoint accepts credentials,
   cookie JSON, arbitrary URLs, uploads, or free-form browser actions.
+- Interactive login selects an allowlisted desktop/mobile presentation after the signed viewer
+  exchange (ADR-047); unopened attempts retain the shared lease but do not launch Chromium.
+  Unknown device hints use mobile. Login cookies still require the isolated mobile verifier,
+  and inventory/check contexts remain configured Android Chromium. Device hints are presentation
+  data, never identity evidence; actual desktop-login-to-mobile-check reuse needs live qualification.
 - The remote login browser runs on the trusted self-hosted VPS. HTTPS and encryption do not protect
   keystrokes against compromised VPS root; stronger disposable/device-local isolation is future
   hardening, not a security property of the current design.

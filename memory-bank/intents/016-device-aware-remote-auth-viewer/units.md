@@ -9,7 +9,7 @@ updated: 2026-09-06T20:44:13Z
 
 ## Units Overview
 
-This intent decomposes into one cohesive viewer unit.
+This intent comprises viewer presentation and device-adaptive login browser units.
 
 ### Unit 1: `001-device-aware-remote-auth-viewer`
 
@@ -48,7 +48,7 @@ viewer.
 
 ## Execution Order
 
-Execute the single unit in two risk-separated bolts after completed Bolts 026, 027, and 029:
+The original viewer unit followed completed Bolts 026, 027, and 029:
 
 1. **Bolt 030**: device-adaptive viewer, keyboard input, viewport, kiosk compatibility, and security.
 2. **Bolt 031**: immediate same-user reclamation, bounded teardown, and concurrency tests.
@@ -56,3 +56,9 @@ Execute the single unit in two risk-separated bolts after completed Bolts 026, 0
 Bolt 031 follows Bolt 030 so its viewer lifecycle hook integrates against the reviewed viewer shell.
 
 3. **Bolt 067**: responsive desktop fullscreen and safe-area follow-up (FR-8 / US-173).
+
+## Unit 002: Device-Adaptive Login Browser
+
+FR-9–11; US-175–177; Bolt 069 complete locally. Adapts only interactive login after
+signed identity verification. Keeps mobile verification, inventory and checks unchanged.
+Live native Telegram and desktop-to-mobile account reuse remain operations qualification.
