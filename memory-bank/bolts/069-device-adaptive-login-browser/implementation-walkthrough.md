@@ -5,8 +5,8 @@ The gateway verifies Telegram identity before passing the normalized hint to the
 A waiting worker retains the shared browser lease, binds the hint once, and uses the original
 expiry and cancellation paths before launching. Unopened attempts launch no browser.
 
-The runner uses one fixed geometry for Xvfb and Chromium. Desktop login creates a 1280x800
-non-mobile, non-touch context with Chromium's native user agent and configured locale/timezone.
+The runner uses one fixed geometry for Xvfb and Chromium. Desktop login creates a native-viewport
+non-mobile, non-touch context in a 1280x800 display with Chromium's native user agent and configured locale/timezone.
 Mobile login uses the unchanged Android context helper. The independent verifier continues
 receiving the mobile descriptor and settings for every login producer. Check execution is unchanged.
 

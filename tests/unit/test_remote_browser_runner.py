@@ -442,6 +442,19 @@ class _RunnerPage:
         self.goto_calls.append((url, kwargs))
 
 
+class _RunnerCdp:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, Any]] = []
+        self.detached = False
+
+    def send(self, command: str, parameters: Any = None) -> dict[str, int]:
+        self.calls.append((command, parameters))
+        return {"windowId": 7}
+
+    def detach(self) -> None:
+        self.detached = True
+
+
 class _RunnerContext(FakeContext):
     def __init__(self, cookie_states: list[str]) -> None:
         super().__init__()
@@ -449,6 +462,11 @@ class _RunnerContext(FakeContext):
         self.page = _RunnerPage()
         self.closed = False
         self.default_timeout: int | None = None
+        self.cdp = _RunnerCdp()
+
+    def new_cdp_session(self, page: Any) -> _RunnerCdp:
+        assert page is self.page
+        return self.cdp
 
     def set_default_timeout(self, value: int) -> None:
         self.default_timeout = value
@@ -636,6 +654,14 @@ def test_runner_uses_server_evidence_without_page_inspection_or_reload(
         assert browser.context_options[0]["is_mobile"] is False
         assert browser.context_options[0]["has_touch"] is False
         assert "user_agent" not in browser.context_options[0]
+        assert browser.context_options[0]["no_viewport"] is True
+        assert context.cdp.calls == [
+            ("Browser.getWindowForTarget", None),
+            ("Browser.setWindowBounds", {"windowId": 7, "bounds": {"windowState": "fullscreen"}}),
+        ]
+        assert context.cdp.detached
+    else:
+        assert context.cdp.calls == []
     assert result.status is RemoteAuthStatus.SUCCEEDED
     assert result.cookies_json == '{"state":"authenticated"}'
     assert ready == [True]
@@ -715,9 +741,8 @@ def test_login_context_uses_server_owned_profile_and_configured_locale(
         assert options == settings.context_options(DESCRIPTOR)
     else:
         assert options == {
-            "viewport": {"width": 1280, "height": 800},
+            "no_viewport": True,
             "screen": {"width": 1280, "height": 800},
-            "device_scale_factor": 1,
             "is_mobile": False,
             "has_touch": False,
             "locale": "de-DE",

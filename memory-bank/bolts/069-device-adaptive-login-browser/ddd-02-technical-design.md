@@ -19,7 +19,7 @@ created: 2026-09-06T21:44:35Z
   Existing completion code releases leases and delivers terminal state for both launched and
   never-launched attempts. Selection never restarts a browser or resets the attempt deadline.
 - Runner: one geometry source supplies Xvfb and Chromium args. Desktop browser.new_context uses
-  1280x800, scale factor 1, no mobile/touch emulation, and configured locale/timezone. Mobile keeps
+  a native viewport within the 1280x800 display, no mobile/touch emulation, and configured locale/timezone. Mobile keeps
   its current context creation. Both use the same guarded navigation policy and cookie observer.
 - Verifier: keep mobile descriptor/settings unchanged; isolated HTTP server probes authenticate
   exact snapshots from either producer. No broadening to UI/cookie-presence success.
@@ -39,3 +39,11 @@ checks; preserve existing lifecycle tests with authenticated exchange before run
 Run actual Chromium desktop/mobile smoke and prove independent mobile verifier options. Then
 run targeted suites, full suite, Ruff/mypy and AI-DLC validators. Native Telegram/Desktop-to-mobile
 account reuse must be qualified separately and cannot be inferred from HTTP-only authentication.
+
+## VPS staging correction
+
+Real headed Chromium creates an oversized native window for an explicit desktop viewport,
+even with --kiosk. Desktop therefore uses no_viewport=True and sets the newly created window
+to fullscreen through fixed CDP window-control calls before navigation. The native content
+area fits the 1280x800 framebuffer (observed1279x799 on packaged Chromium). This fullscreen
+is inside the VPS display, independent of Telegram popup fullscreen. Mobile is unchanged.

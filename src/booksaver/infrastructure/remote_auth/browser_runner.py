@@ -244,6 +244,7 @@ class SystemRemoteBrowserRunner:
                 context.set_default_timeout(5_000)
                 self._secure_context(context)
                 page = context.new_page()
+                self._prepare_login_window(context, page, work.login_device)
                 page.goto(_LOGIN_URL, timeout=45_000, wait_until="domcontentloaded")
                 on_ready()
 
@@ -531,14 +532,31 @@ class SystemRemoteBrowserRunner:
             return new_mobile_context(browser, self._mobile_settings, descriptor)
         width, height = login_device.display_size
         return browser.new_context(
-            viewport={"width": width, "height": height},
+            # An emulated desktop viewport enlarges the native headed window
+            # beyond Xvfb's framebuffer. Use its actual content area instead.
+            no_viewport=True,
             screen={"width": width, "height": height},
-            device_scale_factor=1,
             is_mobile=False,
             has_touch=False,
             locale=self._mobile_settings.locale,
             timezone_id=self._mobile_settings.timezone_id,
         )
+
+    @staticmethod
+    def _prepare_login_window(context: Any, page: Any, login_device: LoginDevice) -> None:
+        if login_device is not LoginDevice.DESKTOP:
+            return
+        # Playwright opens the context window in normal mode despite --kiosk.
+        # Enter fullscreen inside Xvfb; this does not change Telegram's window.
+        session = context.new_cdp_session(page)
+        try:
+            window = session.send("Browser.getWindowForTarget")
+            session.send("Browser.setWindowBounds", {
+                "windowId": window["windowId"],
+                "bounds": {"windowState": "fullscreen"},
+            })
+        finally:
+            session.detach()
 
     @staticmethod
     def _chromium_args(login_device: LoginDevice = LoginDevice.MOBILE) -> list[str]:

@@ -43,3 +43,14 @@ Rebased onto production 4b52ea3, preserving PR 47 diagnostics. Renumbered this w
 Bolt 069 and US-175–177 because upstream allocated Bolt 068/US-174. The integrated suite
 passed 2020 tests in 40.13 seconds; Ruff, mypy (131 files), artifact/status and whitespace
 checks passed. The owner explicitly authorized merge and VPS redeployment.
+
+## Headed VPS correction
+
+Staging detected desktop native bounds1288x885 for emulated viewport1280x800, persisting after
+one second. Desktop now uses the native viewport and explicit internal fullscreen. An isolated
+Xvfb test observed1279x799 inside1280x800, and XGetImage root samples confirmed all four page
+corner markers visible. Mobile context behavior is unchanged. The original exact emulated
+viewport smoke above documents the pre-correction result, not the final native geometry.
+
+Final corrected source: 2020 tests passed in40.06seconds; Ruff, mypy131files, AI-DLC artifact/status
+validation and independent review passed.
