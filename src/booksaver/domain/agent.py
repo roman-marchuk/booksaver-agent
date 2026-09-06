@@ -382,6 +382,7 @@ class TraceKind(Enum):
     AGENT_RESULT = "agent_result"
     CHECK_RESULT = "check_result"
     PRICE_SOURCE = "price_source"
+    PRICE_VALIDATION = "price_validation"
 
 
 @dataclass(frozen=True)

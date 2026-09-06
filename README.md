@@ -55,6 +55,16 @@ issues are exploratory future capabilities, not missing parts of the current hot
    Booking.com; the next synchronization observes the updated account state.
 
 Every check is locally traceable with `booksaver checks trace <CHECK_ID>`.
+
+Agentic price traces include a versioned `price_validation` event for successful and rejected
+observations. It records query/terminal rejection, all failed per-offer evidence checks, actual
+room-match/selection outcomes, and bounded lexical room hints. Inspect `offers[].selection` for
+room mismatch or other exclusions, and `offers[].evidence_rejections` for missing/conflicting
+all-in, refundability, completeness, or currency evidence. Up to 20 offers are detailed; the total
+and omitted counts are explicit. Room hints are recognized words, not semantic equivalence
+claims; missing words mean unmentioned, not absent. Raw room labels, page text, screenshots,
+refundability prose, and secrets are not added to these diagnostics. This instrumentation does
+not change which offers are accepted or invoke additional models.
 When guarded recovery assists account discovery, the local log includes a synchronization run ID;
 inspect its content-free provider/call/token/action/timing audit with
 `booksaver bookings trace <SYNC_RUN_ID>`.

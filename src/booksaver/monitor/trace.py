@@ -4,9 +4,11 @@ import hashlib
 import json
 import logging
 import re
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
+from booksaver.application.browser_executor import PriceExecutionOutcome
 from booksaver.domain.agent import (
     AgentAction,
     AgentHistoryEvent,
@@ -18,6 +20,9 @@ from booksaver.domain.agent import (
 )
 from booksaver.domain.check_result import CheckResult
 from booksaver.domain.journey import JourneyStep, StepOutcome
+from booksaver.domain.models import Booking
+from booksaver.domain.offer import OfferCandidate, OfferSelection
+from booksaver.monitor.price_diagnostics import price_validation_diagnostics
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +116,28 @@ class TraceRecorder:
 
     def currency_alignment(self, detail: str) -> None:
         self._add(TraceKind.CURRENCY_ALIGNMENT, detail)
+
+    def price_validation(
+        self,
+        booking: Booking,
+        outcome: PriceExecutionOutcome,
+        candidates: Sequence[OfferCandidate],
+        selection: OfferSelection | None,
+        normalize_room: Callable[[str], str],
+    ) -> None:
+        try:
+            payload = price_validation_diagnostics(
+                booking, outcome, candidates, selection, normalize_room,
+            )
+        except Exception as exc:
+            # Optional diagnostics must never change the actual acceptance decision.
+            logger.warning("Price validation diagnostics unavailable: %s", type(exc).__name__)
+            return
+        self._add(
+            TraceKind.PRICE_VALIDATION,
+            json.dumps(payload, sort_keys=True, separators=(",", ":")),
+            detail_is_redacted=True,
+        )
 
     def escalation_started(self, step: JourneyStep, trigger: str) -> None:
         self._add(TraceKind.ESCALATION_STARTED, f"{step.value}: {trigger}")

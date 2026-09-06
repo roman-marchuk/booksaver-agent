@@ -490,6 +490,7 @@ Story file paths are relative to `memory-bank/intents/{intent}/units/`.
 | `006-browser-use-price-executor` | 6 stories | Complete (bolt 064) |
 | `007-shared-browser-use-access` | 2 stories | Complete (bolt 065) |
 | `008-connect-refresh-status` | 1 story | Complete (bolt 066) |
+| `009-price-rejection-diagnostics` | 1 story | Complete (bolt 068) |
 
 ### 001-agentic-executor-control-plane: Agentic Executor Control Plane
 
@@ -561,6 +562,12 @@ Story file paths are relative to `memory-bank/intents/{intent}/units/`.
 |-------|-------|-----|--------|------|
 | `US-172` | Explain connect refresh lifecycle | Telegram | Complete | `008-connect-refresh-status/stories/001-explain-connect-refresh-lifecycle.md` |
 
+### 009-price-rejection-diagnostics
+
+| Story | Title | Tag | Status | File |
+|-------|-------|-----|--------|------|
+| `US-174` | Explain price offer rejections | Agentic Browser | Complete | `009-price-rejection-diagnostics/stories/001-explain-price-offer-rejections.md` |
+
 ## Summary
 
 | Intent | Units | Stories | Status |
@@ -587,7 +594,7 @@ Story file paths are relative to `memory-bank/intents/{intent}/units/`.
 | `020-randomized-daily-booking-checks` | 1 | 3 | Complete (bolt 037; 1038 tests) |
 | `021-booking-browser-llm-recovery` | 2 | 8 | Complete (bolts 038–040; 1230 tests) |
 | `022-adaptive-booking-browser-resilience` | 3 | 13 | Complete (bolts 041–049) |
-| `023-replaceable-agentic-browser-executor` | 8 | 30 | In construction (bolt 066 complete; price qualification bolt 052 active, bolt 055 blocked) |
+| `023-replaceable-agentic-browser-executor` | 9 | 31 | In construction (bolt 068 complete; price qualification bolt 052 active, bolt 055 blocked) |
 
-All 173 stories (169 complete; remaining stories retain the statuses above)
+All 174 stories (170 complete; remaining stories retain the statuses above)
 are assigned exactly once.

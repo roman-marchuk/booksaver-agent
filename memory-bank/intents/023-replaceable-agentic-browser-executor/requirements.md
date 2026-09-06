@@ -12,6 +12,14 @@ checkpoint_4_approved: 2026-08-16T19:18:41Z
 
 # Requirements: Replaceable Agentic Browser Executor
 
+## Price rejection diagnostics (2026-09-06)
+
+FR-24 / US-174: Retain bounded code-owned price-validation evidence for successful and failed
+agentic checks: query/terminal rejection, per-offer evidence failures, actual room match and
+selection results, and allowlisted lexical room hints. Record all simultaneous offer failures.
+Keep raw labels/page text/secrets out of traces; no additional model calls or acceptance changes.
+Unit 009 / Bolt 068 owns this user-authorized diagnostic phase before semantic matching.
+
 ## Connect lifecycle correction (2026-09-06)
 
 FR-23 / US-172: Following a saved login, announce authentication before starting the automatic

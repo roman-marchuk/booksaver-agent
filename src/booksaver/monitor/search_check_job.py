@@ -360,6 +360,7 @@ class BookingComSearchMonitor:
                 booking,
                 outcome,
                 snapshot.metadata.revision_id,
+                recorder,
             )
         except Exception as exc:
             logger.error(
@@ -383,9 +384,12 @@ class BookingComSearchMonitor:
         booking: Booking,
         outcome: PriceExecutionOutcome,
         session_revision_id: str,
+        recorder: TraceRecorder | None = None,
     ) -> CheckResult:
         now = datetime.now(UTC)
         if not outcome.validation.accepted:
+            if recorder is not None:
+                recorder.price_validation(booking, outcome, (), None, _normalized_room_identity)
             code = self._agentic_failure_code(
                 outcome.result.status,
                 outcome.validation.rejection,
@@ -400,7 +404,8 @@ class BookingComSearchMonitor:
                 now,
                 FailureReason(
                     code,
-                    f"Agentic price observation rejected by BookSaver ({rejection}).",
+                    "This check could not verify a matching offer: "
+                    f"{rejection}. See the check trace for evidence rejection reasons.",
                 ),
             )
 
@@ -421,13 +426,19 @@ class BookingComSearchMonitor:
                 )
             )
         selection = select_offer(candidates, booking)
+        if recorder is not None:
+            recorder.price_validation(
+                booking, outcome, candidates, selection, _normalized_room_identity,
+            )
         if selection.chosen is None:
             return CheckResult.failure(
                 booking.booking_id,
                 now,
                 FailureReason(
                     FailureCode.NO_EQUIVALENT_OFFER,
-                    "No BookSaver-qualified equivalent refundable offer was observed.",
+                    f"This check could not verify a matching room: {len(candidates)} "
+                    f"price-qualified offers; {selection.exclusion_summary()}. "
+                    "See the check trace for comparison details.",
                 ),
             )
         facts = outcome.result.query_facts
