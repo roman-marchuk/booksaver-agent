@@ -3,7 +3,7 @@ intent: 016-device-aware-remote-auth-viewer
 phase: inception
 status: complete
 created: 2026-07-26T22:14:47.000Z
-updated: 2026-07-26T22:45:44.000Z
+updated: 2026-09-06T20:44:13.000Z
 ---
 
 # Requirements: Device-Aware Remote Authentication Viewer
@@ -101,7 +101,7 @@ capabilities and provides a native software-keyboard bridge for touch-only devic
   - The viewer remembers the user's last remote touch position and, while the keyboard is open,
     keeps that region in the upper visible portion of a vertically clipped or scrollable canvas.
   - Closing the keyboard restores the canvas without reconnecting or restarting the remote browser.
-  - Vertical Telegram swipe behavior and full-screen mode are not changed as part of this intent.
+  - Vertical Telegram swipe behavior remains unchanged. FR-8 extends fullscreen presentation.
   - Buttons meet a minimum 44-by-44 CSS-pixel touch target and remain usable in portrait and
     landscape layouts.
 - **Priority**: Must
@@ -235,3 +235,21 @@ capabilities and provides a native software-keyboard bridge for touch-only devic
 
 No blocking product questions remain for Inception. Real-device acceptance may reveal platform-
 specific keyboard quirks; those must be resolved inside this intent before production deployment.
+
+## FR-8: Enlarge the desktop Telegram viewer (US-173)
+
+- Request Telegram fullscreen once on supported desktop clients and retain expanded-window fallback.
+- Offer an accessible Full screen / Exit full screen control when the host supports the API.
+- Resize the viewer with its available viewport and respect device and Telegram safe areas.
+- Unsupported, missing, rejected, or throwing fullscreen APIs must not interrupt authentication,
+  overwrite session status, cancel the session, or trigger automatic retry loops.
+- Mobile clients keep their existing startup presentation; fullscreen is an explicit optional action.
+- Preserve the remote mobile framebuffer, noVNC proportional scaling, signed exchange, input
+  forwarding, and session lifecycle. Native desktop acceptance remains an operations check.
+
+### Scope authorization — 2026-09-06T20:39:36Z
+
+The owner requested implementation of a screen-adaptive Telegram `/connect` popup following
+AI-DLC. This bounded presentation fix proceeds through local planning, implementation, and
+verification under that request. It extends the earlier fullscreen exclusion only for viewer
+presentation. Commit, push, merge, and deployment remain subject to separate explicit approval.

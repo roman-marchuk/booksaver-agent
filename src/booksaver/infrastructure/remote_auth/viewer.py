@@ -9,29 +9,47 @@ _VIEWER_DOCUMENT = """<!doctype html>
 <title>Connect Booking.com</title>
 <script src="https://telegram.org/js/telegram-web-app.js?63"></script>
 <style nonce="__NONCE__">
-:root{--app-height:100dvh;--safe-bottom:env(safe-area-inset-bottom,0px)}
+:root{--app-height:100dvh;
+ --safe-top:calc(max(env(safe-area-inset-top,0px),var(--host-safe-top,0px)) +
+  var(--content-safe-top,0px));
+ --safe-bottom:calc(max(env(safe-area-inset-bottom,0px),var(--host-safe-bottom,0px)) +
+  var(--content-safe-bottom,0px));
+ --safe-left:calc(max(env(safe-area-inset-left,0px),var(--host-safe-left,0px)) +
+  var(--content-safe-left,0px));
+ --safe-right:calc(max(env(safe-area-inset-right,0px),var(--host-safe-right,0px)) +
+  var(--content-safe-right,0px))}
 *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden}
 body{height:var(--app-height);display:flex;flex-direction:column;background:#101820;color:#fff;
+ padding:var(--safe-top) var(--safe-right) 0 var(--safe-left);
  font:15px system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+#header{display:flex;align-items:center;flex-shrink:0;background:#182633}
 #status{padding:8px 12px;background:#182633;line-height:1.3;min-height:38px}
+#status{flex:1;min-width:0}#fullscreen{flex-shrink:0;margin:4px 8px 4px 0}
+#size-hint{margin:0;padding:5px 12px;background:#22384a;font-size:13px;flex-shrink:0}
 #help{margin:0;padding:7px 12px;background:#22384a;color:#e6f2fa;font-size:13px}
 #viewer{flex:1;min-height:0;position:relative;overflow:auto;background:#000;overscroll-behavior:none}
 #screen{width:100%;height:100%;min-height:100%;touch-action:none}
 body.keyboard-open #screen{height:auto;min-height:max(100%,200vw)}
-#dock{display:flex;gap:6px;padding:7px 8px calc(7px + var(--safe-bottom));background:#182633}
+#dock{display:flex;flex-shrink:0;flex-wrap:wrap;gap:6px;
+ padding:7px 8px calc(7px + var(--safe-bottom));background:#182633}
 button{min-width:44px;min-height:44px;margin:0;padding:8px 10px;border:1px solid #58728a;
  border-radius:8px;background:#26455f;color:#fff;font:inherit;font-weight:600}
-button:disabled{opacity:.45}#keyboard{flex:1}#cancel{background:#71383d;border-color:#a85a61}
+button:disabled{opacity:.45}#keyboard{flex:1 0 auto}#cancel{background:#71383d;border-color:#a85a61}
 #capture{position:fixed;left:-10000px;bottom:0;width:2px;height:2px;opacity:.01;
  pointer-events:none;border:0;padding:0}
 body.keyboard-open #keyboard{background:#0878d1;border-color:#6cb9f1}
+body.keyboard-open #fullscreen{display:none}
 body:not(.touch-first) #help,body:not(.touch-first) #help-button{display:none}
 @media (orientation:landscape) and (max-height:520px){
  #status{padding:5px 10px;min-height:30px;font-size:13px}#help{padding:4px 10px}
  #dock{padding-top:4px;padding-bottom:calc(4px + var(--safe-bottom))}
 }
 </style></head><body>
-<div id="status" role="status" aria-live="polite">Authorizing this connection…</div>
+<div id="header">
+ <div id="status" role="status" aria-live="polite">Authorizing this connection…</div>
+ <button id="fullscreen" type="button" hidden aria-pressed="false">Full screen</button>
+</div>
+<p id="size-hint" role="status" hidden></p>
 <p id="help">Tap a Booking.com field, then tap Keyboard. Use Next or Enter to continue.</p>
 <div id="viewer"><div id="screen" aria-label="Remote Booking.com browser"></div></div>
 <div id="dock" aria-label="Remote browser controls">
@@ -57,6 +75,8 @@ const nextButton=document.getElementById('next');
 const enterButton=document.getElementById('enter');
 const helpButton=document.getElementById('help-button');
 const cancelButton=document.getElementById('cancel');
+const fullscreenButton=document.getElementById('fullscreen');
+const sizeHintNode=document.getElementById('size-hint');
 const tg=window.Telegram&&window.Telegram.WebApp;
 const platform=(tg&&tg.platform)||'unknown';
 const touchFirst=['android','android_x','ios'].includes(platform)||
@@ -79,7 +99,48 @@ let composing=false;
 let lastKeyboardInput=null;
 let lastRemoteTouchY=0;
 const defaultKeyboardInputLen=100;
-if(tg){tg.ready();tg.expand();}
+let fullscreenSupported=false;
+
+function updateFullscreen(){
+ const active=Boolean(tg&&tg.isFullscreen);
+ fullscreenButton.hidden=!fullscreenSupported;
+ fullscreenButton.textContent=active?'Exit full screen':'Full screen';
+ fullscreenButton.setAttribute('aria-pressed',String(active));
+ updateViewport();
+}
+function fullscreenFailed(event){
+ if(event&&event.error==='ALREADY_FULLSCREEN'){updateFullscreen();return;}
+ if(event&&event.error==='UNSUPPORTED')fullscreenSupported=false;
+ sizeHintNode.textContent='Full screen is unavailable. You can continue signing in here.';
+ sizeHintNode.hidden=false;
+ updateFullscreen();
+}
+function toggleFullscreen(){
+ if(!fullscreenSupported)return;
+ sizeHintNode.hidden=true;
+ try{
+  if(tg.isFullscreen)tg.exitFullscreen();
+  else tg.requestFullscreen();
+ }catch(_){fullscreenFailed();}
+}
+function initializePresentation(){
+ if(!tg)return;
+ // Window sizing is optional: host errors must never block the signed login exchange.
+ try{tg.ready();}catch(_){}
+ try{tg.expand();}catch(_){}
+ try{
+  fullscreenSupported=typeof tg.isVersionAtLeast==='function'&&tg.isVersionAtLeast('8.0')&&
+   typeof tg.requestFullscreen==='function'&&typeof tg.exitFullscreen==='function'&&
+   typeof tg.onEvent==='function';
+ }catch(_){}
+ if(fullscreenSupported){
+  tg.onEvent('fullscreenChanged',()=>{sizeHintNode.hidden=true;updateFullscreen();});
+  tg.onEvent('fullscreenFailed',fullscreenFailed);
+ }
+ updateFullscreen();
+ const desktop=['tdesktop','macos','unigram'].includes(platform)||!touchFirst;
+ if(desktop&&fullscreenSupported&&!tg.isFullscreen)toggleFullscreen();
+}
 
 function setStatus(message){statusNode.textContent=message;}
 function setViewerError(message){
@@ -106,6 +167,14 @@ function updateViewport(){
  const visual=window.visualViewport&&window.visualViewport.height;
  const height=Math.max(240,Math.floor(visual||viewport||window.innerHeight));
  document.documentElement.style.setProperty('--app-height',`${height}px`);
+ for(const side of ['top','right','bottom','left']){
+  for(const [prefix,insets] of [['host',tg&&tg.safeAreaInset],
+                               ['content',tg&&tg.contentSafeAreaInset]]){
+   const value=Number(insets&&insets[side]);
+   const pixels=Number.isFinite(value)?Math.max(0,value):0;
+   document.documentElement.style.setProperty(`--${prefix}-safe-${side}`,`${pixels}px`);
+  }
+ }
  requestAnimationFrame(positionTouchedRegion);
 }
 function setKeyboardOpen(open){
@@ -292,6 +361,7 @@ function cancelOnClose(event){
 keyboardButton.addEventListener('click',()=>{
  setKeyboardOpen(!document.body.classList.contains('keyboard-open'));
 });
+fullscreenButton.addEventListener('click',toggleFullscreen);
 nextButton.addEventListener('click',()=>sendShortcut(KeyTable.XK_Tab,'Tab'));
 enterButton.addEventListener('click',()=>sendShortcut(KeyTable.XK_Return,'Enter'));
 helpButton.addEventListener('click',()=>{
@@ -327,9 +397,14 @@ dockNode.addEventListener('mousedown',event=>{
 window.addEventListener('pagehide',cancelOnClose);
 window.addEventListener('resize',updateViewport);
 if(window.visualViewport)window.visualViewport.addEventListener('resize',updateViewport);
-if(tg&&tg.onEvent)tg.onEvent('viewportChanged',updateViewport);
+if(tg&&tg.onEvent){
+ tg.onEvent('viewportChanged',updateViewport);
+ tg.onEvent('safeAreaChanged',updateViewport);
+ tg.onEvent('contentSafeAreaChanged',updateViewport);
+}
 resetKeyboardInput();
 updateViewport();
+initializePresentation();
 start().catch(error=>setStatus(error.message));
 </script></body></html>"""
 

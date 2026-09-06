@@ -2,7 +2,7 @@
 intent: 016-device-aware-remote-auth-viewer
 phase: inception
 status: units-decomposed
-updated: 2026-07-26T22:45:44Z
+updated: 2026-09-06T20:44:13Z
 ---
 
 # Device-Aware Remote Authentication Viewer - Unit Decomposition
@@ -17,7 +17,7 @@ This intent decomposes into one cohesive viewer unit.
 behavior, safe lifecycle cleanup, and browser-level regression coverage to the existing Mini App
 viewer.
 
-**Assigned Requirements**: FR-1 through FR-7.
+**Assigned Requirements**: FR-1 through FR-8.
 
 **Deliverables**:
 
@@ -54,3 +54,5 @@ Execute the single unit in two risk-separated bolts after completed Bolts 026, 0
 2. **Bolt 031**: immediate same-user reclamation, bounded teardown, and concurrency tests.
 
 Bolt 031 follows Bolt 030 so its viewer lifecycle hook integrates against the reviewed viewer shell.
+
+3. **Bolt 067**: responsive desktop fullscreen and safe-area follow-up (FR-8 / US-173).

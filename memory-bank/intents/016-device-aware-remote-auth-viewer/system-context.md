@@ -2,7 +2,7 @@
 intent: 016-device-aware-remote-auth-viewer
 phase: inception
 status: context-defined
-updated: 2026-07-26T22:45:44Z
+updated: 2026-09-06T20:44:13Z
 ---
 
 # Device-Aware Remote Authentication Viewer - System Context
@@ -88,3 +88,9 @@ flowchart LR
 - The viewer remains stable across keyboard-driven viewport changes and safe-area insets.
 - Desktop input and all remote-auth security/lifecycle behavior remain regression-free.
 - Credential text has no new durable or observable path.
+
+## Responsive viewer extension
+
+Telegram fullscreen capabilities and safe-area values remain untrusted presentation hints.
+Desktop enlargement uses the existing host bridge and never changes server browser dimensions,
+identity exchange, navigation authority, or session ownership.

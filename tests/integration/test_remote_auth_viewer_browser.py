@@ -49,6 +49,44 @@ _KEYSYM_DEFINITIONS_MODULE = """
 export default {lookup(value) { return value; }};
 """
 
+_TELEGRAM_MODULE = """
+const options = __OPTIONS__;
+const handlers = {};
+window.__fullscreenRequests = 0;
+window.__fullscreenExits = 0;
+window.__expandRequests = 0;
+window.__telegramEvent = (name, data) => {
+  for (const callback of handlers[name] || []) callback(data);
+};
+const app = {
+  initData: 'signed', platform: options.platform,
+  viewportHeight: 780, viewportStableHeight: 780,
+  ready() {}, expand() { window.__expandRequests++; },
+  onEvent(name, callback) { (handlers[name] ||= []).push(callback); },
+  close() { window.__telegramClosed = true; }
+};
+if (options.fullscreen !== 'missing') {
+  app.isFullscreen = options.fullscreen === 'already';
+  app.isVersionAtLeast = () => options.fullscreen !== 'old';
+  app.requestFullscreen = () => {
+    window.__fullscreenRequests++;
+    if (options.fullscreen === 'throw') throw new Error('Host unavailable');
+    if (options.fullscreen === 'unsupported') {
+      setTimeout(() => window.__telegramEvent('fullscreenFailed', {error: 'UNSUPPORTED'}), 0);
+      return;
+    }
+    app.isFullscreen = true;
+    window.__telegramEvent('fullscreenChanged');
+  };
+  app.exitFullscreen = () => {
+    window.__fullscreenExits++;
+    app.isFullscreen = false;
+    window.__telegramEvent('fullscreenChanged');
+  };
+}
+window.Telegram = {WebApp: app};
+"""
+
 
 class _ViewerHandler(BaseHTTPRequestHandler):
     server: _ViewerServer
@@ -63,15 +101,12 @@ class _ViewerHandler(BaseHTTPRequestHandler):
             self._send(200, html, "text/html; charset=utf-8")
             return
         if self.path == "/telegram.js":
-            platform = json.dumps(self.server.platform)
+            options = json.dumps(
+                {"platform": self.server.platform, "fullscreen": self.server.fullscreen_mode}
+            )
             self._send(
                 200,
-                "window.Telegram={WebApp:{"
-                "initData:'signed',"
-                f"platform:{platform},"
-                "viewportHeight:780,viewportStableHeight:780,"
-                "ready(){},expand(){},onEvent(){},close(){window.__telegramClosed=true;}"
-                "}};",
+                _TELEGRAM_MODULE.replace("__OPTIONS__", options),
                 "text/javascript",
             )
             return
@@ -124,6 +159,7 @@ class _ViewerHandler(BaseHTTPRequestHandler):
 
 class _ViewerServer(ThreadingHTTPServer):
     platform: str
+    fullscreen_mode: str
     session_status: str
     exchanges: int
     cancellations: int
@@ -133,6 +169,7 @@ class _ViewerServer(ThreadingHTTPServer):
 def viewer_server() -> Iterator[tuple[_ViewerServer, str]]:
     server = _ViewerServer(("127.0.0.1", 0), _ViewerHandler)
     server.platform = "android"
+    server.fullscreen_mode = "missing"
     server.session_status = "ready"
     server.exchanges = 0
     server.cancellations = 0
@@ -394,4 +431,181 @@ def test_failed_viewer_remains_visible_and_does_not_close_telegram(
         "window.dispatchEvent(new PageTransitionEvent('pagehide', {persisted: false}))"
     )
     browser_page.wait_for_timeout(50)
+    assert server.cancellations == 0
+
+
+@pytest.mark.parametrize("platform", ["tdesktop", "macos", "unigram", "web", "unknown"])
+def test_desktop_fullscreen_can_exit_reenter_and_resize_without_reconnecting(
+    viewer_server: tuple[_ViewerServer, str], desktop_page: Page, platform: str
+) -> None:
+    server, url = viewer_server
+    server.platform = platform
+    server.fullscreen_mode = "success"
+    desktop_page.goto(url)
+    desktop_page.wait_for_function("!document.querySelector('#keyboard').disabled")
+    button = desktop_page.get_by_role("button", name="Exit full screen", exact=True)
+    assert button.get_attribute("aria-pressed") == "true"
+    assert desktop_page.evaluate("window.__fullscreenRequests") == 1
+    assert desktop_page.evaluate("window.__expandRequests") == 1
+
+    button.click()
+    button = desktop_page.get_by_role("button", name="Full screen", exact=True)
+    assert button.get_attribute("aria-pressed") == "false"
+    assert desktop_page.evaluate("window.__fullscreenExits") == 1
+    button.click()
+    assert desktop_page.evaluate("window.__fullscreenRequests") == 2
+
+    for width, height in [(1440, 1000), (600, 480)]:
+        desktop_page.set_viewport_size({"width": width, "height": height})
+        desktop_page.wait_for_function("document.body.clientHeight === window.innerHeight")
+        viewer = desktop_page.locator("#viewer").bounding_box()
+        dock = desktop_page.locator("#dock").bounding_box()
+        assert viewer is not None and dock is not None
+        assert viewer["width"] == width
+        assert viewer["height"] > height - 170
+        assert dock["y"] + dock["height"] == height
+    assert server.exchanges == 1
+    assert server.cancellations == 0
+    assert desktop_page.evaluate("window.__rfbInstances.length") == 1
+    assert desktop_page.evaluate("window.__rfbInstances[0].scaleViewport") is True
+    assert desktop_page.evaluate("window.__rfbInstances[0].resizeSession") is False
+
+
+@pytest.mark.parametrize("mode", ["missing", "old", "throw", "unsupported", "already"])
+def test_fullscreen_compatibility_never_blocks_login(
+    viewer_server: tuple[_ViewerServer, str], desktop_page: Page, mode: str
+) -> None:
+    server, url = viewer_server
+    server.platform = "tdesktop"
+    server.fullscreen_mode = mode
+    errors: list[str] = []
+    desktop_page.on("pageerror", lambda error: errors.append(str(error)))
+    desktop_page.goto(url)
+    desktop_page.wait_for_function("!document.querySelector('#keyboard').disabled")
+    assert desktop_page.evaluate("window.__fullscreenRequests") == (
+        1 if mode in {"throw", "unsupported"} else 0
+    )
+    if mode in {"throw", "unsupported"}:
+        assert desktop_page.locator("#size-hint").is_visible()
+        assert "connected" in desktop_page.locator("#status").inner_text()
+    if mode in {"missing", "old", "unsupported"}:
+        assert desktop_page.locator("#fullscreen").is_hidden()
+    # Resize/host events cannot cause an automatic retry or an authentication exchange.
+    desktop_page.evaluate("window.__telegramEvent('viewportChanged')")
+    desktop_page.set_viewport_size({"width": 1200, "height": 900})
+    assert desktop_page.evaluate("window.__fullscreenRequests") == (
+        1 if mode in {"throw", "unsupported"} else 0
+    )
+    assert server.exchanges == 1
+    assert server.cancellations == 0
+    assert errors == []
+
+
+@pytest.mark.parametrize("platform", ["android", "ios", "web", "unknown", "tdesktop"])
+def test_touch_fullscreen_choice_and_safe_areas(
+    viewer_server: tuple[_ViewerServer, str], browser_page: Page, platform: str
+) -> None:
+    server, url = viewer_server
+    server.platform = platform
+    server.fullscreen_mode = "success"
+    browser_page.goto(url)
+    browser_page.wait_for_function("!document.querySelector('#keyboard').disabled")
+    assert browser_page.evaluate("window.__fullscreenRequests") == (platform == "tdesktop")
+    if platform != "tdesktop":
+        browser_page.get_by_role("button", name="Full screen", exact=True).click()
+    assert browser_page.evaluate("window.Telegram.WebApp.isFullscreen") is True
+
+    for width, height in [(390, 780), (780, 390), (320, 568)]:
+        browser_page.set_viewport_size({"width": width, "height": height})
+        browser_page.evaluate(
+            """() => {
+              const app = window.Telegram.WebApp;
+              app.safeAreaInset = {top: 24, bottom: 20, left: 12, right: 14};
+              app.contentSafeAreaInset = {top: 46, bottom: 5, left: 4, right: 6};
+              window.__telegramEvent('safeAreaChanged');
+              window.__telegramEvent('contentSafeAreaChanged');
+            }"""
+        )
+        browser_page.wait_for_function("document.body.clientHeight === window.innerHeight")
+        assert browser_page.locator("body").evaluate(
+            "element => getComputedStyle(element).paddingTop"
+        ) == "70px"
+        assert browser_page.locator("#dock").evaluate(
+            "element => getComputedStyle(element).paddingBottom"
+        ) in {"32px", "29px"}  # Compact landscape dock uses 4px instead of 7px.
+        for selector in ["#viewer", "#fullscreen", "#keyboard", "#next", "#enter", "#cancel"]:
+            box = browser_page.locator(selector).bounding_box()
+            assert box is not None
+            assert box["x"] >= 16
+            assert box["x"] + box["width"] <= width - 20
+            assert box["y"] >= 70
+            assert box["y"] + box["height"] <= height - 25
+        viewer = browser_page.locator("#viewer").bounding_box()
+        assert viewer is not None and viewer["height"] > 0
+    browser_page.evaluate(
+        """() => {
+          window.Telegram.WebApp.safeAreaInset = {};
+          window.Telegram.WebApp.contentSafeAreaInset = {};
+          window.__telegramEvent('contentSafeAreaChanged');
+        }"""
+    )
+    assert browser_page.locator("body").evaluate(
+        "element => getComputedStyle(element).paddingTop"
+    ) == "0px"
+    assert server.exchanges == 1
+    assert server.cancellations == 0
+    assert browser_page.evaluate("window.__rfbInstances.length") == 1
+
+
+def test_fullscreen_mobile_keyboard_keeps_controls_and_touched_region_reachable(
+    viewer_server: tuple[_ViewerServer, str], browser_page: Page
+) -> None:
+    server, url = viewer_server
+    server.fullscreen_mode = "success"
+    browser_page.goto(url)
+    browser_page.wait_for_function("!document.querySelector('#keyboard').disabled")
+    browser_page.get_by_role("button", name="Full screen", exact=True).click()
+    browser_page.evaluate(
+        """() => {
+          const app = window.Telegram.WebApp;
+          app.safeAreaInset = {top: 24, bottom: 20};
+          app.contentSafeAreaInset = {top: 46};
+          window.__telegramEvent('safeAreaChanged');
+        }"""
+    )
+    browser_page.locator("#viewer").dispatch_event("pointerdown", {"clientY": 600})
+    browser_page.locator("#keyboard").click()
+    browser_page.evaluate(
+        """() => {
+          Object.defineProperty(window.visualViewport, 'height', {
+            configurable: true, get: () => 360
+          });
+          window.visualViewport.dispatchEvent(new Event('resize'));
+        }"""
+    )
+    browser_page.wait_for_function("document.querySelector('#viewer').scrollTop > 0")
+    viewer = browser_page.locator("#viewer").bounding_box()
+    assert viewer is not None and viewer["height"] > 0
+    assert browser_page.locator("#fullscreen").is_hidden()
+    for selector in ["#keyboard", "#next", "#enter", "#cancel"]:
+        box = browser_page.locator(selector).bounding_box()
+        assert box is not None and box["y"] + box["height"] <= 340
+        assert browser_page.locator(selector).evaluate(
+            "element => element.scrollWidth <= element.clientWidth"
+        )
+    assert browser_page.evaluate("document.activeElement.id") == "capture"
+    browser_page.locator("#next").click()
+    assert browser_page.evaluate("window.__rfbInstances[0].keys.at(-1)") == [65289, "Tab"]
+    browser_page.locator("#keyboard").click()
+    browser_page.evaluate(
+        """() => {
+          delete window.visualViewport.height;
+          window.visualViewport.dispatchEvent(new Event('resize'));
+        }"""
+    )
+    browser_page.wait_for_function("document.body.clientHeight === 780")
+    assert browser_page.get_by_role("button", name="Exit full screen", exact=True).is_visible()
+    assert browser_page.locator("#viewer").evaluate("element => element.scrollTop") == 0
+    assert browser_page.evaluate("window.__rfbInstances.length") == 1
+    assert server.exchanges == 1
     assert server.cancellations == 0
