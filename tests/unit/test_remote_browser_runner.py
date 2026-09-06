@@ -1,12 +1,16 @@
 from __future__ import annotations
 
-import inspect
 import threading
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
+from unittest.mock import Mock
+
+import pytest
 
 from booksaver.application.remote_auth import RemoteBrowserWork
 from booksaver.domain.mobile_web import MobileWebSettings
+from booksaver.domain.models import Config
 from booksaver.domain.remote_auth import (
     RemoteAuthFailure,
     RemoteAuthServerReceipt,
@@ -20,6 +24,7 @@ from booksaver.domain.remote_auth import (
     ServerSizeClass,
     ServerStatusClass,
 )
+from booksaver.domain.value_objects import CheckInterval, DataDirectory, NotificationSettings
 from booksaver.infrastructure.remote_auth.browser_runner import (
     SystemRemoteBrowserRunner,
 )
@@ -400,21 +405,99 @@ def test_remote_auth_declares_no_dom_steps() -> None:
     from booksaver.infrastructure.remote_auth import browser_runner
 
     assert browser_runner.DOM_STEPS == ()
-    source = inspect.getsource(SystemRemoteBrowserRunner._run_browser)  # noqa: SLF001
-    assert ".locator(" not in source
-    assert "page_state" not in source
-    assert "model" not in source
-    assert "myreservations" not in source
 
 
-def test_remote_auth_runtime_has_no_adaptive_model_admission() -> None:
-    from booksaver.infrastructure.remote_auth.runtime import build_remote_auth_runtime
+@pytest.fixture
+def forbidden_model_calls(monkeypatch):
+    """Observe forbidden model capability construction and use."""
+    import anthropic
+    import browser_use
 
-    signature = inspect.signature(build_remote_auth_runtime)
-    source = inspect.getsource(build_remote_auth_runtime)
-    assert "adaptive_runtime_scope" not in signature.parameters
-    assert "BrowserJobKind.REMOTE_AUTH" not in source
-    assert "page_state_resolver" not in source
+    from booksaver.application.model_policy import BrowserJobCostBudget
+    from booksaver.infrastructure.browser.agentic_executor import AnthropicComputerUseModel
+    from booksaver.infrastructure.browser.agentic_inventory_executor import (
+        AnthropicInventoryComputerUseModel,
+    )
+    from booksaver.infrastructure.browser.browser_use_inventory_executor import (
+        BrowserUseInventoryBrowserExecutor,
+        LocalBrowserUseInventoryRuntime,
+    )
+    from booksaver.infrastructure.browser.browser_use_price_executor import (
+        BrowserUsePriceBrowserExecutor,
+        LocalBrowserUsePriceRuntime,
+    )
+    from booksaver.infrastructure.llm.adaptive_execution import AdaptiveRoleExecutor
+    from booksaver.infrastructure.llm.anthropic_adapter import (
+        AnthropicAgentBrain,
+        AnthropicExtractor,
+        AnthropicInventoryInterpreter,
+    )
+    from booksaver.infrastructure.llm.client_factory import (
+        AnthropicLLMClientFactory,
+        CallerBoundAnthropicFactory,
+        LazyAdaptiveAnthropicRuntimeFactory,
+    )
+    from booksaver.infrastructure.llm.page_state_classifier import AnthropicPageStateClassifier
+
+    calls = Mock(side_effect=AssertionError("remote authentication must be model-free"))
+    monkeypatch.setattr(anthropic, "Anthropic", calls)
+    monkeypatch.setattr(browser_use, "Agent", calls)
+    monkeypatch.setattr(browser_use, "ChatAnthropic", calls)
+    monkeypatch.setattr(AnthropicLLMClientFactory, "__init__", calls)
+    monkeypatch.setattr(CallerBoundAnthropicFactory, "__init__", calls)
+    monkeypatch.setattr(LazyAdaptiveAnthropicRuntimeFactory, "__init__", calls)
+    monkeypatch.setattr(AnthropicComputerUseModel, "__init__", calls)
+    monkeypatch.setattr(AnthropicInventoryComputerUseModel, "__init__", calls)
+    monkeypatch.setattr(BrowserUseInventoryBrowserExecutor, "__init__", calls)
+    monkeypatch.setattr(BrowserUsePriceBrowserExecutor, "__init__", calls)
+    monkeypatch.setattr(LocalBrowserUseInventoryRuntime, "__init__", calls)
+    monkeypatch.setattr(LocalBrowserUsePriceRuntime, "__init__", calls)
+    monkeypatch.setattr(AnthropicPageStateClassifier, "__init__", calls)
+    monkeypatch.setattr(BrowserJobCostBudget, "__init__", calls)
+    monkeypatch.setattr(BrowserJobCostBudget, "admit", calls)
+    monkeypatch.setattr(AdaptiveRoleExecutor, "invoke_primary", calls)
+    monkeypatch.setattr(AdaptiveRoleExecutor, "invoke_escalation", calls)
+    monkeypatch.setattr(AnthropicAgentBrain, "decide", calls)
+    monkeypatch.setattr(AnthropicExtractor, "extract_price", calls)
+    monkeypatch.setattr(AnthropicExtractor, "extract_offers", calls)
+    monkeypatch.setattr(AnthropicInventoryInterpreter, "interpret", calls)
+    monkeypatch.setattr(AnthropicPageStateClassifier, "classify", calls)
+    monkeypatch.setattr(AnthropicComputerUseModel, "next_turn", calls)
+    monkeypatch.setattr(AnthropicInventoryComputerUseModel, "next_turn", calls)
+    yield calls
+    calls.assert_not_called()
+
+
+def test_remote_auth_runtime_assembles_without_model_capabilities(
+    tmp_path: Path,
+    forbidden_model_calls: Mock,
+) -> None:
+    from booksaver.infrastructure.remote_auth.runtime import (
+        RemoteAuthRuntime,
+        build_remote_auth_runtime,
+    )
+
+    config = Config(
+        check_interval=CheckInterval(duration=timedelta(hours=6)),
+        data_directory=DataDirectory(path=tmp_path),
+        notification_settings=NotificationSettings(),
+        loaded_at=NOW,
+        remote_auth_settings=RemoteAuthSettings(
+            enabled=True,
+            public_url="https://connect.example.test",
+        ),
+    )
+
+    runtime = build_remote_auth_runtime(
+        config,
+        tmp_path / "booksaver.db",
+        threading.Event(),
+        "telegram-bot-token",
+        Mock(),
+        threading.Lock(),
+    )
+
+    assert isinstance(runtime, RemoteAuthRuntime)
 
 
 class _RunnerProcess:
@@ -556,6 +639,7 @@ class _RunnerVerifier:
 
 def test_runner_uses_server_evidence_without_page_inspection_or_reload(
     monkeypatch: Any,
+    forbidden_model_calls,
 ) -> None:
     from playwright import sync_api
 
@@ -625,6 +709,7 @@ def test_runner_uses_server_evidence_without_page_inspection_or_reload(
 
 def test_runner_refuses_to_admit_viewer_when_negative_baseline_changes(
     monkeypatch: Any,
+    forbidden_model_calls,
 ) -> None:
     from playwright import sync_api
 

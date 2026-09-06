@@ -55,7 +55,7 @@ def build_bot_runner(
     check_coordinator: CheckCoordinator | None = None,
     remote_auth_manager: RemoteAuthenticationManager | None = None,
 ) -> BotRunner | None:
-    """Wires client + router + dialogs + access control into a runnable bot loop.
+    """Wires the client, router, and access control into a runnable bot loop.
 
     Returns None (and logs why) when the bot is disabled or misconfigured, so
     `cmd_run`/`lifecycle.start` can skip the thread entirely — laptop mode with

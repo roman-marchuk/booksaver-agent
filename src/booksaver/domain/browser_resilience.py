@@ -16,24 +16,6 @@ from enum import Enum
 from .model_policy import ModelStopReason
 
 _SAFE_CODE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
-_VISIBLE_URL_OR_QUERY = re.compile(
-    r"(?:https?://|www\.|(?:^|[?&])[A-Za-z0-9_.~-]+=[^\s&]+)",
-    re.IGNORECASE,
-)
-_SECRET_MATERIAL = re.compile(
-    r"(?:cookie\s*:|authorization\s*:|bearer\s+[A-Za-z0-9._~-]{8,}|"
-    r"(?:password|passwd|secret|api[_ -]?key)\s*[:=])",
-    re.IGNORECASE,
-)
-_AUTHORITATIVE_CLAIM = re.compile(
-    r"\b(?:no\s+(?:reservations?|bookings?|rooms?|offers?|results?)|"
-    r"(?:inventory|pagination|traversal)\s+(?:is\s+)?complete|"
-    r"all\s+(?:pages?|results?|reservations?)\s+(?:were\s+)?(?:read|seen|checked)|"
-    r"(?:is\s+)?(?:equivalent|eligible|safe|accepted)|"
-    r"(?:reservation|booking)\s+(?:was\s+)?(?:cancelled|canceled|modified))\b",
-    re.IGNORECASE,
-)
-_MAX_VISIBLE_CONTENT_LENGTH = 512
 
 
 class DomJourney(Enum):
@@ -141,31 +123,6 @@ class SemanticSchema(Enum):
     ROOM_RATE_STRUCTURE = "room_rate_structure"
     CURRENCY_STATE = "currency_state"
     OFFER_FACTS = "offer_facts"
-
-
-class SemanticFactKey(Enum):
-    """Positive visible facts that a model may report but never verify."""
-
-    PROPERTY_IDENTITY = "property_identity"
-    STAY_DATES = "stay_dates"
-    OCCUPANCY = "occupancy"
-    CURRENCY = "currency"
-    ROOM_RATE_CONTENT = "room_rate_content"
-    INVENTORY_SCOPE = "inventory_scope"
-    PAGINATION_PROGRESS = "pagination_progress"
-    RESERVATION_IDENTITY = "reservation_identity"
-    REFUNDABILITY_EVIDENCE = "refundability_evidence"
-
-
-class VisibleEvidenceKind(Enum):
-    ELEMENT_REFERENCE = "element_reference"
-    VISIBLE_EXCERPT = "visible_excerpt"
-
-
-class StepVerificationStatus(Enum):
-    VERIFIED = "verified"
-    AMBIGUOUS = "ambiguous"
-    EXACT_FAILURE = "exact_failure"
 
 
 class DiagnosisProvenance(Enum):
@@ -327,148 +284,6 @@ class CodeVerificationReceipt:
             raise ValueError("verified_at must be timezone-aware")
         if not _SAFE_CODE.fullmatch(self.verifier):
             raise ValueError("verifier must be a bounded machine code")
-
-
-def _validate_visible_content(value: str, *, field_name: str) -> None:
-    if not value or value != value.strip():
-        raise ValueError(f"{field_name} must be non-empty and normalized")
-    if len(value) > _MAX_VISIBLE_CONTENT_LENGTH:
-        raise ValueError(f"{field_name} exceeds the visible-content limit")
-    if any(ord(character) < 32 for character in value):
-        raise ValueError(f"{field_name} cannot contain control characters")
-    if _VISIBLE_URL_OR_QUERY.search(value):
-        raise ValueError(f"{field_name} cannot contain a URL or query value")
-    if _SECRET_MATERIAL.search(value):
-        raise ValueError(f"{field_name} cannot contain secret material")
-
-
-@dataclass(frozen=True, slots=True)
-class VisibleEvidence:
-    """One bounded, current, visible grounding item; never hidden browser state."""
-
-    evidence_id: str
-    kind: VisibleEvidenceKind
-    content: str
-
-    def __post_init__(self) -> None:
-        if not _SAFE_CODE.fullmatch(self.evidence_id):
-            raise ValueError("evidence_id must be a bounded machine code")
-        if not isinstance(self.kind, VisibleEvidenceKind):
-            raise ValueError("visible evidence kind must use the closed vocabulary")
-        if self.kind is VisibleEvidenceKind.ELEMENT_REFERENCE:
-            if not _SAFE_CODE.fullmatch(self.content):
-                raise ValueError("element evidence must be a fresh bounded reference")
-            return
-        _validate_visible_content(self.content, field_name="visible excerpt")
-
-
-@dataclass(frozen=True, slots=True)
-class SemanticFact:
-    """An advisory positive fact whose authority remains with a code verifier."""
-
-    fact_id: str
-    key: SemanticFactKey
-    value: str
-    evidence_ids: tuple[str, ...]
-
-    def __post_init__(self) -> None:
-        if not _SAFE_CODE.fullmatch(self.fact_id):
-            raise ValueError("fact_id must be a bounded machine code")
-        if not isinstance(self.key, SemanticFactKey):
-            raise ValueError("semantic fact key must use the closed positive vocabulary")
-        _validate_visible_content(self.value, field_name="semantic fact value")
-        if _AUTHORITATIVE_CLAIM.search(self.value):
-            raise ValueError("semantic facts cannot make authoritative domain claims")
-        if not self.evidence_ids:
-            raise ValueError("every semantic fact requires visible grounding")
-        if len(set(self.evidence_ids)) != len(self.evidence_ids):
-            raise ValueError("semantic fact evidence references must be unique")
-        if any(not _SAFE_CODE.fullmatch(item) for item in self.evidence_ids):
-            raise ValueError("semantic fact evidence must use bounded identifiers")
-
-
-@dataclass(frozen=True, slots=True)
-class SemanticStepObservation:
-    """Positive-only model output tied to one fresh registered page observation.
-
-    The closed fact-key vocabulary intentionally has no key for absence,
-    completeness, equivalence, eligibility, accepted price, lifecycle mutation,
-    or action safety.  Consumers must compare every value with trusted inputs.
-    """
-
-    step_id: DomStepId
-    observation_id: str
-    facts: tuple[SemanticFact, ...]
-    visible_evidence: tuple[VisibleEvidence, ...]
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.step_id, DomStepId):
-            raise ValueError("semantic observation requires a registered step")
-        if not _SAFE_CODE.fullmatch(self.observation_id):
-            raise ValueError("observation_id must be a bounded machine code")
-        if not self.facts:
-            raise ValueError("a semantic observation must contain a positive fact")
-        fact_ids = tuple(fact.fact_id for fact in self.facts)
-        if len(set(fact_ids)) != len(fact_ids):
-            raise ValueError("semantic fact identifiers must be unique")
-        evidence_ids = tuple(item.evidence_id for item in self.visible_evidence)
-        if len(set(evidence_ids)) != len(evidence_ids):
-            raise ValueError("visible evidence identifiers must be unique")
-        evidence_set = set(evidence_ids)
-        if any(
-            evidence_id not in evidence_set
-            for fact in self.facts
-            for evidence_id in fact.evidence_ids
-        ):
-            raise ValueError("every semantic fact must reference current visible evidence")
-
-
-@dataclass(frozen=True, slots=True)
-class StepVerificationResult:
-    """Code-owned three-state decision for one semantic postcondition."""
-
-    step_id: DomStepId
-    observation_id: str
-    status: StepVerificationStatus
-    evidence: frozenset[EvidenceCategory]
-    receipt: CodeVerificationReceipt | None = None
-    exact_reason: TerminalBrowserReason | None = None
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.step_id, DomStepId):
-            raise ValueError("verification requires a registered step")
-        if not isinstance(self.status, StepVerificationStatus):
-            raise ValueError("verification status must use the closed vocabulary")
-        if any(not isinstance(item, EvidenceCategory) for item in self.evidence):
-            raise ValueError("verification evidence must use safe categories")
-        if not _SAFE_CODE.fullmatch(self.observation_id):
-            raise ValueError("observation_id must be a bounded machine code")
-        if self.status is StepVerificationStatus.VERIFIED:
-            if self.receipt is None or self.exact_reason is not None:
-                raise ValueError("verified results require only a code receipt")
-            if (
-                self.receipt.step_id is not self.step_id
-                or self.receipt.observation_id != self.observation_id
-            ):
-                raise ValueError("verification receipt must prove this fresh step")
-            return
-        if self.receipt is not None:
-            raise ValueError("only verified results may carry a code receipt")
-        if self.status is StepVerificationStatus.AMBIGUOUS:
-            if self.exact_reason is not None:
-                raise ValueError("ambiguous results cannot claim an exact reason")
-            return
-        if self.exact_reason is None:
-            raise ValueError("exact failures require a typed reason")
-        if not isinstance(self.exact_reason, TerminalBrowserReason):
-            raise ValueError("exact failure reason must use the closed vocabulary")
-        if self.exact_reason in {
-            TerminalBrowserReason.POSTCONDITION_SATISFIED,
-            TerminalBrowserReason.CODE_VERIFICATION_REQUIRED,
-            TerminalBrowserReason.UNRESOLVED_AMBIGUITY,
-            TerminalBrowserReason.CODE_MAINTENANCE_REQUIRED,
-        }:
-            raise ValueError("an exact code failure cannot be model ambiguity or success")
 
 
 @dataclass(frozen=True, slots=True)
@@ -702,6 +517,36 @@ class PageStateResolution:
             TerminalBrowserReason.CODE_VERIFICATION_REQUIRED,
         }:
             raise ValueError("a successful or candidate state cannot carry a model stop")
+
+
+def provenance_for_terminal(reason: TerminalBrowserReason) -> DiagnosisProvenance:
+    """Classify a terminal reason using the shared browser evidence taxonomy."""
+
+    if reason in {
+        TerminalBrowserReason.PROVIDER_AUTHENTICATION,
+        TerminalBrowserReason.PROVIDER_UNAVAILABLE,
+        TerminalBrowserReason.PROVIDER_RATE_LIMIT,
+    }:
+        return DiagnosisProvenance.PROVIDER_STOP
+    if reason in {
+        TerminalBrowserReason.TIME_LIMIT,
+        TerminalBrowserReason.JOB_COST_LIMIT,
+        TerminalBrowserReason.DAILY_COST_LIMIT,
+        TerminalBrowserReason.MODEL_PRICING_UNAVAILABLE,
+        TerminalBrowserReason.COST_ACCOUNTING_ERROR,
+        TerminalBrowserReason.CLOCK_ROLLBACK,
+    }:
+        return DiagnosisProvenance.BUDGET_STOP
+    if reason in {
+        TerminalBrowserReason.AUTHENTICATION_REQUIRED,
+        TerminalBrowserReason.MFA_REQUIRED,
+        TerminalBrowserReason.BOT_WALL,
+        TerminalBrowserReason.BLOCKED_DESTINATION,
+        TerminalBrowserReason.PROHIBITED_ACTION,
+        TerminalBrowserReason.EXPLICIT_UNAVAILABLE,
+    }:
+        return DiagnosisProvenance.DETERMINISTIC
+    return DiagnosisProvenance.POLICY_STOP
 
 
 def operator_action_for(state: PageState) -> OperatorAction:

@@ -23,6 +23,7 @@ from booksaver.domain.model_policy import (
 from booksaver.evaluation import (
     ReplayAggregateMetrics,
     approved_recovery_profiles,
+    curated_fixture_directory,
     load_fixture,
     plan_packaged_qualification,
     plan_profile_replay,
@@ -31,7 +32,7 @@ from booksaver.evaluation import (
 from booksaver.infrastructure.persistence.model_policy import SqliteSpendLedger
 from booksaver.infrastructure.persistence.sqlite_store import SqliteStore
 
-FIXTURE_DIRECTORY = Path(__file__).parents[2] / "fixtures" / "browser_recovery"
+FIXTURE_DIRECTORY = curated_fixture_directory()
 
 
 def _fixture(name: str):
@@ -84,9 +85,7 @@ def test_packaged_plan_prices_both_profiles_before_provider_access() -> None:
     assert plan.runs_per_fixture == 10
     assert plan.maximum_provider_calls == 80
     assert plan.maximum_cost.micro_usd > 0
-    cartesian = plan_profile_replay(
-        fixtures, approved_recovery_profiles(), runs_per_fixture=10
-    )
+    cartesian = plan_profile_replay(fixtures, approved_recovery_profiles(), runs_per_fixture=10)
     assert cartesian.maximum_provider_calls == 160
     assert plan.maximum_cost < cartesian.maximum_cost
 
@@ -248,9 +247,7 @@ def test_shared_spend_ledger_stops_with_partial_failed_report_before_provider_ca
         assert len(report.profiles) == 1
         assert report.profiles[0].result.metrics.runs == 1
         assert report.profiles[0].result.metrics.total_calls == 0
-        assert store.conn.execute(
-            "SELECT COUNT(*) FROM llm_cost_reservations"
-        ).fetchone()[0] == 0
+        assert store.conn.execute("SELECT COUNT(*) FROM llm_cost_reservations").fetchone()[0] == 0
 
 
 def test_every_live_qualification_call_is_reserved_and_reconciled(tmp_path: Path) -> None:
@@ -312,7 +309,5 @@ def test_every_live_qualification_call_is_reserved_and_reconciled(tmp_path: Path
         assert all(row["output_tokens"] == 10 for row in attempts)
         assert {row["trigger"] for row in attempts[:10]} == {"initial_ambiguous"}
         assert {row["outcome"] for row in attempts[:10]} == {"completed"}
-        assert {row["trigger"] for row in attempts[10:]} == {
-            "unverified_sonnet_exhaustion"
-        }
+        assert {row["trigger"] for row in attempts[10:]} == {"unverified_sonnet_exhaustion"}
         assert {row["outcome"] for row in attempts[10:]} == {"diagnosed"}

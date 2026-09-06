@@ -13,7 +13,6 @@ from booksaver.infrastructure.llm.anthropic_adapter import (
     AnthropicInventoryInterpreter,
     LLMFailureKind,
     LLMProviderError,
-    has_non_authoritative_inventory_negative_claims,
     parse_inventory_response,
 )
 
@@ -87,21 +86,6 @@ def test_malformed_or_non_positive_item_fails_closed(overrides: dict[str, object
 
 def test_one_malformed_item_rejects_whole_model_reply() -> None:
     assert _parse(_item(), _item(remote_id="reservation-2", lifecycle="absent")) == ()
-
-
-@pytest.mark.parametrize("lifecycle", ["completed", "cancelled"])
-def test_seen_negative_lifecycle_is_explicitly_non_authoritative(lifecycle: str) -> None:
-    observations = _parse(_item(lifecycle=lifecycle))
-
-    assert len(observations) == 1
-    assert has_non_authoritative_inventory_negative_claims(observations[0])
-
-
-def test_non_refundable_model_claim_is_explicitly_non_authoritative() -> None:
-    observations = _parse(_item(refundable=False))
-
-    assert len(observations) == 1
-    assert has_non_authoritative_inventory_negative_claims(observations[0])
 
 
 def test_duplicate_remote_identity_is_ambiguous() -> None:

@@ -26,15 +26,11 @@ from booksaver.domain.user_session import UserSessionMetadata, UserSessionSnapsh
 from booksaver.domain.value_objects import Money, Platform
 from booksaver.monitor.failure_tracker import FailureTracker
 from booksaver.monitor.search_check_job import BookingComSearchMonitor
-from booksaver.monitor.session_manager import SessionManager
 
 from .fakes import (
-    FakeBookingRepository,
     FakeCheckHistoryRepository,
     FakeInteractiveBrowser,
-    FakeSessionRepository,
     make_booking,
-    make_session,
 )
 
 
@@ -135,9 +131,7 @@ def _monitor(check: _AgenticCheck):
     history = FakeCheckHistoryRepository()
     monitor = BookingComSearchMonitor(
         browser=browser,
-        session_manager=SessionManager(FakeSessionRepository(make_session())),
         check_history=history,
-        booking_repo=FakeBookingRepository([]),
         failure_tracker=FailureTracker(history),
         agentic_price_check=check,  # type: ignore[arg-type]
         agentic_owner_user_id=7,

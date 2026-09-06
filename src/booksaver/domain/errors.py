@@ -11,19 +11,6 @@ class ConfigValidationError(BookSaverError):
         super().__init__("\n".join(errors))
 
 
-class BookingRejectedError(BookSaverError):
-    def __init__(self, reason: str) -> None:
-        self.reason = reason
-        super().__init__(reason)
-
-
-class LocalPathViolation(BookSaverError):
-    def __init__(self, path: str, data_dir: str) -> None:
-        self.path = path
-        self.data_dir = data_dir
-        super().__init__(f"Path '{path}' is not under data directory '{data_dir}'")
-
-
 class UserKeyInvalidError(BookSaverError):
     """Raised by LLMClientFactory when a booking owner's personal Anthropic
     key cannot be resolved (missing/invalid BOOKSAVER_SECRET_KEY, corrupt

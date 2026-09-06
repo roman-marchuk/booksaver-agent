@@ -22,10 +22,8 @@ from booksaver.domain.mobile_web import (
     PriceSourceProvenance,
 )
 from booksaver.domain.models import Booking
-from booksaver.domain.session import SessionState, SessionStatus
 from booksaver.domain.value_objects import (
     ConfirmationId,
-    DataDirectory,
     Money,
     Platform,
     ProductType,
@@ -34,16 +32,15 @@ from booksaver.domain.value_objects import (
     RoomType,
     StayDates,
 )
-from booksaver.infrastructure.persistence.session_store import LocalSessionRepository
 from booksaver.infrastructure.persistence.sqlite_store import (
     SCHEMA_VERSION,
-    SqliteBookingRepository,
     SqliteCheckHistoryRepository,
     SqliteStore,
 )
+from tests.support.bookings import seed_booking
 
 
-def _register_booking(store: SqliteStore, booking_id: str = "b-1") -> Booking:
+def _seed_booking_projection(store: SqliteStore, booking_id: str = "b-1") -> Booking:
     booking = Booking(
         booking_id=booking_id,
         platform=Platform.BOOKING_COM,
@@ -56,7 +53,7 @@ def _register_booking(store: SqliteStore, booking_id: str = "b-1") -> Booking:
         refundability=RefundabilityPolicy(is_refundable=True, note="free cancellation"),
         registered_at=datetime.now(UTC),
     )
-    SqliteBookingRepository(store).add(booking)
+    seed_booking(store, booking)
     return booking
 
 
@@ -102,7 +99,7 @@ def _failure_result(booking_id: str) -> CheckResult:
 class TestSqliteCheckHistoryRepository:
     def test_success_round_trip_preserves_all_fields(self, tmp_path: Path) -> None:
         with SqliteStore(tmp_path / "t.db") as store:
-            _register_booking(store)
+            _seed_booking_projection(store)
             repo = SqliteCheckHistoryRepository(store)
             original = _success_result("b-1")
             repo.add(original)
@@ -122,7 +119,7 @@ class TestSqliteCheckHistoryRepository:
     ) -> None:
         provenance = _price_source()
         with SqliteStore(tmp_path / "t.db") as store:
-            _register_booking(store)
+            _seed_booking_projection(store)
             repo = SqliteCheckHistoryRepository(store)
             original = CheckResult.success(
                 booking_id="b-1",
@@ -154,7 +151,7 @@ class TestSqliteCheckHistoryRepository:
 
     def test_failure_round_trip(self, tmp_path: Path) -> None:
         with SqliteStore(tmp_path / "t.db") as store:
-            _register_booking(store)
+            _seed_booking_projection(store)
             repo = SqliteCheckHistoryRepository(store)
             repo.add(_failure_result("b-1"))
 
@@ -167,7 +164,7 @@ class TestSqliteCheckHistoryRepository:
 
     def test_get_recent_returns_newest_first_and_limits(self, tmp_path: Path) -> None:
         with SqliteStore(tmp_path / "t.db") as store:
-            _register_booking(store)
+            _seed_booking_projection(store)
             repo = SqliteCheckHistoryRepository(store)
             for _ in range(5):
                 repo.add(_failure_result("b-1"))
@@ -181,7 +178,7 @@ class TestSqliteCheckHistoryRepository:
 
     def test_count_consecutive_failures(self, tmp_path: Path) -> None:
         with SqliteStore(tmp_path / "t.db") as store:
-            _register_booking(store)
+            _seed_booking_projection(store)
             repo = SqliteCheckHistoryRepository(store)
 
             repo.add(_failure_result("b-1"))
@@ -193,7 +190,7 @@ class TestSqliteCheckHistoryRepository:
 
     def test_count_is_zero_after_success(self, tmp_path: Path) -> None:
         with SqliteStore(tmp_path / "t.db") as store:
-            _register_booking(store)
+            _seed_booking_projection(store)
             repo = SqliteCheckHistoryRepository(store)
             repo.add(_failure_result("b-1"))
             repo.add(_success_result("b-1"))
@@ -230,7 +227,7 @@ class TestSchemaMigration:
         conn.close()
 
         with SqliteStore(db_path) as store:
-            _register_booking(store)
+            _seed_booking_projection(store)
             repo = SqliteCheckHistoryRepository(store)
             repo.add(_success_result("b-1"))  # would fail on the v1 stub columns
 
@@ -355,42 +352,3 @@ class TestSchemaMigration:
         assert expected_columns <= columns
         assert legacy_rows == []
         assert version == SCHEMA_VERSION == 18
-
-
-class TestLocalSessionRepository:
-    def test_round_trip(self, tmp_path: Path) -> None:
-        data_dir = DataDirectory(path=tmp_path)
-        repo = LocalSessionRepository(data_dir)
-        session = SessionState.new(
-            platform=Platform.BOOKING_COM,
-            cookies=b'[{"name": "sid", "value": "abc"}]',
-            authenticated_at=datetime.now(UTC),
-        )
-
-        repo.save(session)
-        loaded = repo.load(Platform.BOOKING_COM)
-
-        assert loaded is not None
-        assert loaded.session_id == session.session_id
-        assert loaded.cookies == session.cookies
-        assert loaded.status is SessionStatus.ACTIVE
-
-    def test_load_returns_none_when_missing(self, tmp_path: Path) -> None:
-        repo = LocalSessionRepository(DataDirectory(path=tmp_path))
-        assert repo.load(Platform.BOOKING_COM) is None
-
-    def test_corrupt_file_returns_none(self, tmp_path: Path) -> None:
-        (tmp_path / "session_booking_com.json").write_text("{not json")
-        repo = LocalSessionRepository(DataDirectory(path=tmp_path))
-        assert repo.load(Platform.BOOKING_COM) is None
-
-    def test_file_permissions_restricted(self, tmp_path: Path) -> None:
-        repo = LocalSessionRepository(DataDirectory(path=tmp_path))
-        session = SessionState.new(
-            platform=Platform.BOOKING_COM,
-            cookies=b"[]",
-            authenticated_at=datetime.now(UTC),
-        )
-        repo.save(session)
-        mode = (tmp_path / "session_booking_com.json").stat().st_mode
-        assert oct(mode)[-3:] == "600"

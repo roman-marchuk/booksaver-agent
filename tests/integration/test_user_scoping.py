@@ -1,13 +1,13 @@
 """US-029: schema v7 users table, v6->v7 migration, and repository scoping."""
 
 import sqlite3
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 
 import pytest
 
-from booksaver.application.register_booking import register_booking
+from booksaver.domain.models import Booking
 from booksaver.domain.user import UserAccessState, UserRole
 from booksaver.domain.value_objects import (
     ConfirmationId,
@@ -27,6 +27,7 @@ from booksaver.infrastructure.persistence.sqlite_store import (
     SqliteStore,
     SqliteUserRepository,
 )
+from tests.support.bookings import seed_booking
 
 _V6_DDL = """\
 CREATE TABLE schema_meta (version INTEGER NOT NULL, applied_at TEXT NOT NULL);
@@ -130,8 +131,8 @@ def _make_v6_db(db_path: Path) -> None:
     conn.close()
 
 
-def _booking_kwargs(confirmation: str, property_name: str = "Hotel Test") -> dict:
-    return dict(
+def _booking(confirmation: str, property_name: str = "Hotel Test") -> Booking:
+    return Booking.create(
         platform=Platform.BOOKING_COM,
         product_type=ProductType.HOTEL,
         confirmation_id=ConfirmationId.of(confirmation),
@@ -141,6 +142,7 @@ def _booking_kwargs(confirmation: str, property_name: str = "Hotel Test") -> dic
         baseline_price=Money.of("400.00", "EUR"),
         refundability=RefundabilityPolicy(is_refundable=True, note="Free cancellation"),
         occupancy=Occupancy(adults=2),
+        registered_at=datetime.now(UTC),
     )
 
 
@@ -191,17 +193,15 @@ class TestV7Migration:
         assert users[0].role is UserRole.OWNER
 
     def test_laptop_single_user_mode_unchanged(self, tmp_path):
-        """Owner-only deployment: registering + listing behaves exactly as
-        pre-v7 (booking auto-assigned to the sole owner user)."""
+        """Owner-only projections remain visible only to the owner."""
         with SqliteStore(tmp_path / "laptop.db") as store:
             repo = SqliteBookingRepository(store)
             owner = SqliteUserRepository(store).get_owner()
-            booking, _ = register_booking(repo=repo, **_booking_kwargs("BKG-LAPTOP"))
+            booking = _booking("BKG-LAPTOP")
+            seed_booking(store, booking)
             active = repo.list_active_for_user(owner.user_id)
-            unscoped_active = repo.list_active()
         assert len(active) == 1
         assert active[0].booking_id == booking.booking_id
-        assert len(unscoped_active) == 1
 
 
 class TestExactlyOneOwner:
@@ -246,19 +246,11 @@ class TestCrossUserIsolation:
 
     def _two_users_with_bookings(self, store) -> tuple[int, int]:
         users = SqliteUserRepository(store)
-        bookings = SqliteBookingRepository(store)
-
         user_a = users.get_owner()
         user_b = users.get_or_create_by_telegram_id(4242)
 
-        register_booking(
-            repo=bookings, user_id=user_a.user_id,
-            **_booking_kwargs("CONF-A", "Hotel A"),
-        )
-        register_booking(
-            repo=bookings, user_id=user_b.user_id,
-            **_booking_kwargs("CONF-B", "Hotel B"),
-        )
+        seed_booking(store, _booking("CONF-A", "Hotel A"), user_id=user_a.user_id)
+        seed_booking(store, _booking("CONF-B", "Hotel B"), user_id=user_b.user_id)
         return user_a.user_id, user_b.user_id
 
     def test_bookings_list_active_is_isolated(self, tmp_path):
@@ -345,11 +337,9 @@ class TestGetOwnerOfBooking:
     def test_resolves_the_booking_owner(self, tmp_path):
         with SqliteStore(tmp_path / "t.db") as store:
             users = SqliteUserRepository(store)
-            bookings = SqliteBookingRepository(store)
             invited = users.get_or_create_by_telegram_id(555)
-            booking, _ = register_booking(
-                repo=bookings, user_id=invited.user_id, **_booking_kwargs("CONF-OWNER")
-            )
+            booking = _booking("CONF-OWNER")
+            seed_booking(store, booking, user_id=invited.user_id)
             owner_of_booking = users.get_owner_of_booking(booking.booking_id)
 
         assert owner_of_booking is not None
@@ -390,17 +380,52 @@ class TestPurgeUser:
             users = SqliteUserRepository(store)
             bookings = SqliteBookingRepository(store)
             victim = users.get_or_create_by_telegram_id(202)
-            booking, _ = register_booking(
-                repo=bookings, user_id=victim.user_id, **_booking_kwargs("CONF-PURGE")
+            booking = _booking("CONF-PURGE")
+            seed_booking(store, booking, user_id=victim.user_id)
+            recorded_at = datetime.now(UTC).isoformat()
+            store.conn.execute(
+                "INSERT INTO check_history "
+                "(check_id, booking_id, checked_at, outcome, extraction_method) "
+                "VALUES ('purge-check', ?, ?, 'failure', 'none')",
+                (booking.booking_id, recorded_at),
             )
+            store.conn.execute(
+                "INSERT INTO savings_opportunities "
+                "(opportunity_id, booking_id, check_id, baseline_amount, live_amount, "
+                "currency, amount_saved, percent_saved, validated_at) "
+                "VALUES ('purge-opportunity', ?, 'purge-check', '400', '350', "
+                "'EUR', '50', '12.5', ?)",
+                (booking.booking_id, recorded_at),
+            )
+            store.conn.execute(
+                "INSERT INTO rebook_sessions "
+                "(session_id, opportunity_id, booking_id, state, started_at) "
+                "VALUES ('historical-session', 'purge-opportunity', ?, 'completed', ?)",
+                (booking.booking_id, recorded_at),
+            )
+            store.conn.execute(
+                "INSERT INTO rebook_events "
+                "(event_id, session_id, event_type, detail, occurred_at) "
+                "VALUES ('historical-event', 'historical-session', 'completed', '', ?)",
+                (recorded_at,),
+            )
+            store.conn.commit()
 
             users.purge(victim.user_id)
 
             remaining_user = users.get_by_id(victim.user_id)
             remaining_booking = bookings.get_by_id(booking.booking_id)
+            historical_session_count = store.conn.execute(
+                "SELECT COUNT(*) FROM rebook_sessions WHERE session_id = 'historical-session'"
+            ).fetchone()[0]
+            historical_event_count = store.conn.execute(
+                "SELECT COUNT(*) FROM rebook_events WHERE session_id = 'historical-session'"
+            ).fetchone()[0]
 
         assert remaining_user is None
         assert remaining_booking is None
+        assert historical_session_count == 0
+        assert historical_event_count == 0
 
     def test_purge_owner_is_rejected(self, tmp_path):
         with SqliteStore(tmp_path / "t.db") as store:

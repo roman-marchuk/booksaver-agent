@@ -14,7 +14,6 @@ from booksaver.application.browser_resilience import (
     VisibleControlEvidence,
 )
 from booksaver.application.model_policy import AdmittedModelAttempt
-from booksaver.application.ports import PageSnapshot
 from booksaver.domain.agent import ElementInfo, LLMUsage, Observation
 from booksaver.domain.browser_resilience import (
     DomStepId,
@@ -42,7 +41,6 @@ from booksaver.infrastructure.llm.anthropic_adapter import LLMFailureKind
 from booksaver.infrastructure.llm.page_state_classifier import (
     AnthropicPageStateClassifier,
     CallerBoundPageStateClassifier,
-    classification_evidence_from_page,
 )
 
 
@@ -446,80 +444,6 @@ def test_caller_bound_wrapper_builds_only_the_admitted_fixed_profile() -> None:
 
     assert built == [sonnet, opus]
     assert calls == [sonnet, sonnet, opus]
-
-
-def test_agent_observation_conversion_drops_browser_authority_and_sensitive_fragments() -> None:
-    page = Observation(
-        url="https://secure.booking.com/mytrips?token=private",
-        title="Trips https://private.example/path",
-        text=(
-            "Unknown changed layout ?token=secret cookie: session-secret [data-testid='private']"
-        ),
-        elements=(
-            ElementInfo(
-                ref="e7",
-                role="link",
-                label="Trips https://private.example/path",
-                href="https://secure.booking.com/mytrips?token=private",
-            ),
-            ElementInfo(
-                ref="e8",
-                role="button",
-                label="Continue",
-                href=None,
-            ),
-        ),
-        screenshot=b"private-pixels",
-        popup_urls=("https://private.example/popup",),
-    )
-
-    evidence = classification_evidence_from_page(page, _observation())
-
-    rendered = repr(evidence)
-    assert "https://" not in rendered
-    assert "session-secret" not in rendered
-    assert "data-testid" not in rendered
-    assert "token=secret" not in rendered
-    assert "reference='e7'" in rendered
-    assert "reference='e8'" in rendered
-    assert "private-pixels" not in rendered
-    assert "popup" not in rendered
-    assert evidence.controls[-1] == VisibleControlEvidence(
-        reference="e8",
-        role="button",
-        label="Continue",
-    )
-
-
-@pytest.mark.parametrize(
-    "protected",
-    [
-        EvidenceCategory.CREDENTIAL_CONTROL,
-        EvidenceCategory.MFA_CONTROL,
-        EvidenceCategory.CAPTCHA_CHALLENGE,
-        EvidenceCategory.BOT_WALL,
-    ],
-)
-def test_possible_protected_page_conversion_suppresses_text_and_controls(
-    protected: EvidenceCategory,
-) -> None:
-    observation = FreshPageObservation(
-        observation_id="protected-observation-1",
-        observed_at=datetime(2026, 8, 13, tzinfo=UTC),
-        evidence=frozenset({protected}),
-    )
-    page = PageSnapshot(
-        url="https://secure.booking.com/login?token=private",
-        title="Private account",
-        text="person@example.com secret typed value",
-    )
-
-    evidence = classification_evidence_from_page(page, observation)
-
-    assert evidence.title == ""
-    assert evidence.visible_text == ""
-    assert evidence.controls == ()
-    assert not evidence.screenshot_allowed
 
 
 def test_runtime_observation_converter_suppresses_possible_login_content() -> None:

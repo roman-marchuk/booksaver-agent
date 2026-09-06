@@ -738,23 +738,6 @@ def _make_llm_client_factory(cfg: Config, store: Any = None) -> Any:
     return AnthropicLLMClientFactory(cfg, user_repo=user_repo, key_store=key_store)
 
 
-def _make_llm_extractor(cfg: Config) -> Any:
-    """Behavior unchanged from pre-v7: resolves the owner env-var key, or
-    None (DOM-only mode) if unset/anthropic isn't installed. Goes through the
-    LLMClientFactory seam so a later slice can resolve per-user keys.
-    """
-    return _make_llm_client_factory(cfg).for_booking(None)
-
-
-def _make_agent_brain(cfg: Config) -> Any:
-    """Behavior unchanged from pre-v7: resolves the owner env-var key, or
-    None (scripted-only mode) if unset/anthropic isn't installed. Goes
-    through the LLMClientFactory seam so a later slice can resolve per-user
-    keys.
-    """
-    return _make_llm_client_factory(cfg).agent_brain_for_booking(None)
-
-
 # ── auth import ──────────────────────────────────────────────────────────────
 
 
@@ -1559,12 +1542,14 @@ def cmd_agentic_regress(args: argparse.Namespace) -> int:
 # ── parser ────────────────────────────────────────────────────────────────────
 
 
-def _no_subcommand(parser: argparse.ArgumentParser) -> argparse.Namespace:
+def _no_subcommand(
+    parser: argparse.ArgumentParser,
+) -> Callable[[argparse.Namespace], int]:
     def _help(args: argparse.Namespace) -> int:
         parser.print_help()
         return 1
 
-    return _help  # type: ignore[return-value]
+    return _help
 
 
 def create_parser() -> argparse.ArgumentParser:

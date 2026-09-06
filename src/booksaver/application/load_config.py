@@ -179,13 +179,6 @@ def load_config(source: ConfigSource) -> Config:
         # `owner` is accepted only so existing VPS config files keep starting;
         # TelegramBotSettings normalizes it to the fixed invite-only posture.
         access_mode = str(telegram_raw.get("access_mode", "invite"))
-        rebook_timeout_defaults = TelegramBotSettings()
-        rebook_confirm_timeout_seconds = int(
-            telegram_raw.get(
-                "rebook_confirm_timeout_seconds",
-                rebook_timeout_defaults.rebook_confirm_timeout_seconds,
-            )
-        )
         if tg_enabled and owner_chat_id is None:
             raise ValueError("owner_chat_id is required when telegram_bot.enabled is true")
         telegram_bot_settings = TelegramBotSettings(
@@ -193,7 +186,6 @@ def load_config(source: ConfigSource) -> Config:
             owner_chat_id=owner_chat_id,
             poll_timeout_seconds=poll_timeout_seconds,
             access_mode=access_mode,
-            rebook_confirm_timeout_seconds=rebook_confirm_timeout_seconds,
         )
     except (ValueError, TypeError) as e:
         errors.append(f"telegram_bot: {e}")

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from pathlib import Path
 
 import pytest
 
@@ -13,9 +12,14 @@ from booksaver.domain.agent import (
     AgentTurnContext,
     LLMUsage,
 )
-from booksaver.evaluation import ReplayFixture, ReplayRunner, load_fixture
+from booksaver.evaluation import (
+    ReplayFixture,
+    ReplayRunner,
+    curated_fixture_directory,
+    load_fixture,
+)
 
-FIXTURE_DIRECTORY = Path(__file__).parents[2] / "fixtures" / "browser_recovery"
+FIXTURE_DIRECTORY = curated_fixture_directory()
 
 
 class ScriptedBrain:
@@ -36,9 +40,7 @@ class FailingBrain:
 
 
 class UsageBrain(ScriptedBrain):
-    def __init__(
-        self, actions: Sequence[AgentAction], usages: Sequence[LLMUsage | None]
-    ) -> None:
+    def __init__(self, actions: Sequence[AgentAction], usages: Sequence[LLMUsage | None]) -> None:
         super().__init__(actions)
         self._usages = list(usages)
         self.last_usage: LLMUsage | None = None
@@ -296,9 +298,7 @@ def test_alternating_equivalent_controls_allow_early_conservative_no_progress(
 ) -> None:
     runs, _aggregate = ReplayRunner().run(
         _fixture("alternating-equivalent-refs.json"),
-        ScriptedBrain(
-            [_click(first_ref), _give_up(AgentStopReason.NO_PROGRESS)]
-        ),
+        ScriptedBrain([_click(first_ref), _give_up(AgentStopReason.NO_PROGRESS)]),
     )
 
     assert runs[0].correct_outcome

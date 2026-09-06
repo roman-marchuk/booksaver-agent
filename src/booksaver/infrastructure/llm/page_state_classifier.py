@@ -8,7 +8,6 @@ selectors, control values, credentials, cookies, and screenshots.
 from __future__ import annotations
 
 import json
-import re
 from typing import Any, Protocol, cast
 
 from booksaver.application.browser_resilience import (
@@ -18,10 +17,8 @@ from booksaver.application.browser_resilience import (
     PageClassificationEvidence,
     PageClassifierProviderFailure,
     PageStateResolver,
-    VisibleControlEvidence,
 )
 from booksaver.application.model_policy import AdmittedModelAttempt, BrowserJobCostBudget
-from booksaver.application.ports import PageSnapshot
 from booksaver.domain.agent import Observation
 from booksaver.domain.browser_resilience import (
     DomStepDefinition,
@@ -55,16 +52,6 @@ _PROTECTED_CONTENT_EVIDENCE = frozenset(
         EvidenceCategory.BOT_WALL,
     }
 )
-_UNSAFE_VISIBLE_FRAGMENT = re.compile(
-    r"(?:https?://\S+|www\.\S+|\?[^\s=]+=[^\s]+|"
-    r"(?:cookie|authorization)\s*:\s*\S+|bearer\s+\S+)",
-    re.IGNORECASE,
-)
-_SELECTOR_FRAGMENT = re.compile(
-    r"(?:querySelector|locator\(|xpath=|css=|\[data-testid[^\]]*\])",
-    re.IGNORECASE,
-)
-
 _MODEL_STATES = tuple(
     state.value
     for state in PageState
@@ -285,58 +272,6 @@ class CallerBoundPageStateResolver:
             classification_evidence=evidence,
             budget_factory=lambda: self._budget,
         )
-
-
-def classification_evidence_from_page(
-    page: Observation | PageSnapshot,
-    observation: FreshPageObservation,
-) -> PageClassificationEvidence:
-    """Build ephemeral classifier evidence without browser authority or secrets.
-
-    Possible credential, MFA, CAPTCHA, bot-wall, and unavailable pages suppress
-    all text and controls.  For ambiguous non-protected pages, URLs, query
-    fragments, secret headers, selector-like fragments, hrefs, input values,
-    popup destinations, and screenshots are never copied. Content-free element
-    references are retained so model evidence can be grounded by code.
-    """
-
-    if observation.evidence.intersection(_PROTECTED_CONTENT_EVIDENCE):
-        return PageClassificationEvidence(
-            observation_id=observation.observation_id,
-            title="",
-            visible_text="",
-        )
-
-    controls = []
-    for element in getattr(page, "elements", ()):
-        role = str(getattr(element, "role", "")).casefold()
-        label = _sanitize_visible_text(str(getattr(element, "label", "")), 256)
-        if not role or not label:
-            continue
-        try:
-            controls.append(
-                VisibleControlEvidence(
-                    reference=str(getattr(element, "ref", "")),
-                    role=role,
-                    label=label,
-                )
-            )
-        except ValueError:
-            continue
-        if len(controls) >= 80:
-            break
-    return PageClassificationEvidence(
-        observation_id=observation.observation_id,
-        title=_sanitize_visible_text(page.title, 256),
-        visible_text=_sanitize_visible_text(page.text, 6_000),
-        controls=tuple(controls),
-    )
-
-
-def _sanitize_visible_text(value: str, maximum: int) -> str:
-    sanitized = _UNSAFE_VISIBLE_FRAGMENT.sub("[redacted]", value)
-    sanitized = _SELECTOR_FRAGMENT.sub("[redacted]", sanitized)
-    return sanitized[:maximum]
 
 
 def _render_classifier_request(

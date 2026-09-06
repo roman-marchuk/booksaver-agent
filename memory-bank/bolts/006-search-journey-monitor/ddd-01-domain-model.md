@@ -3,7 +3,14 @@ unit: 001-search-journey-monitor
 bolt: 006-search-journey-monitor
 stage: model
 status: complete
-updated: 2026-07-05T23:30:00Z
+updated: null
+timestamp_provenance:
+  - field: "updated"
+    state: "unknown"
+    original_value: "2026-07-05T23:30:00Z"
+    evidence_commit: "6ff4afea49088ae25084541e87185ad374ff0e4a"
+    evidence_committed_at: "2026-07-05T23:26:19Z"
+    reason: "Original timestamp is later than the commit that recorded it and conflicts with bolt completion; exact historical execution or authoring time is unknown."
 ---
 
 # Domain Model — Search Journey Monitor
@@ -127,3 +134,10 @@ Schema **v5** (single migration for the whole intent):
 2. `check_history` rebuilt once to relax `extraction_method` CHECK to
    `('dom','llm','none','agent')` — `agent` is reserved for bolt 007, avoiding a second
    table rebuild in the same intent.
+
+## Historical timestamp correction (Intent 024)
+
+Unreliable chronology fields are explicitly unknown. Their original values and Git recording
+evidence remain in frontmatter. Commit timestamps establish when the metadata was recorded,
+not when tests or design work ran. Completion status and historical test claims are unchanged;
+this correction does not independently verify those claims.

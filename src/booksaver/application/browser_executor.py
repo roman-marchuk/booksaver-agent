@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import threading
 import uuid
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 from booksaver.application.ports import (
     PriceBrowserExecutor,
+    SessionLeaseBroker,
     SessionRestoreTarget,
     VerifiedSessionRefreshSource,
 )
@@ -55,8 +56,7 @@ class InMemorySessionLeaseBroker:
         owner_user_id: int,
         execution_id: str,
         session_material: bytes,
-        subject_id: str | None = None,
-        booking_id: str | None = None,
+        subject_id: str,
         ttl: timedelta = timedelta(minutes=4),
     ) -> SessionLeaseReference:
         if not session_material:
@@ -67,7 +67,6 @@ class InMemorySessionLeaseBroker:
             lease_id=str(uuid.uuid4()),
             owner_user_id=owner_user_id,
             subject_id=subject_id,
-            booking_id=booking_id,
             execution_id=execution_id,
             expires_at=self._clock() + ttl,
         )
@@ -205,20 +204,6 @@ class ExecutionMeter:
             )
 
 
-class FakePriceBrowserExecutor:
-    """Deterministic contract fake shared by monitor and qualification tests."""
-
-    def __init__(self, results: Iterable[PriceExecutionResult]) -> None:
-        self._results = list(results)
-        self.requests: list[PriceExecutionRequest] = []
-
-    def execute(self, request: PriceExecutionRequest) -> PriceExecutionResult:
-        self.requests.append(request)
-        if not self._results:
-            raise RuntimeError("fake executor has no queued result")
-        return self._results.pop(0)
-
-
 @dataclass(frozen=True, slots=True)
 class PriceExecutionOutcome:
     result: PriceExecutionResult
@@ -232,7 +217,7 @@ class AgenticPriceExecutionService:
     def __init__(
         self,
         executor: PriceBrowserExecutor,
-        lease_broker: InMemorySessionLeaseBroker,
+        lease_broker: SessionLeaseBroker,
     ) -> None:
         self._executor = executor
         self._lease_broker = lease_broker

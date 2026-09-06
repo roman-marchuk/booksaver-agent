@@ -24,15 +24,11 @@ from booksaver.domain.check_result import CheckOutcome, FailureCode
 from booksaver.domain.value_objects import Money
 from booksaver.monitor.failure_tracker import FailureTracker
 from booksaver.monitor.search_check_job import BookingComSearchMonitor
-from booksaver.monitor.session_manager import SessionManager
 
 from .fakes import (
-    FakeBookingRepository,
     FakeCheckHistoryRepository,
     FakeInteractiveBrowser,
-    FakeSessionRepository,
     make_booking,
-    make_session,
 )
 from .test_agentic_search_check_job import _AgenticCheck, _outcome, _snapshot
 from .test_monitor_agent_wiring import FakeCheckTraceRepository
@@ -65,9 +61,7 @@ def _run(
     history = FakeCheckHistoryRepository()
     monitor = BookingComSearchMonitor(
         browser=FakeInteractiveBrowser(),
-        session_manager=SessionManager(FakeSessionRepository(make_session())),
         check_history=history,
-        booking_repo=FakeBookingRepository([]),
         failure_tracker=FailureTracker(history),
         trace_repo=traces,
         agentic_price_check=_AgenticCheck(outcome),  # type: ignore[arg-type]

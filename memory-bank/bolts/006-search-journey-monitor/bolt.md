@@ -14,19 +14,19 @@ completed: "2026-07-05T23:25:58Z"
 current_stage: null
 stages_completed:
   - name: model
-    completed: 2026-07-05T23:30:00.000Z
+    completed: null
     artifact: ddd-01-domain-model.md
   - name: design
-    completed: 2026-07-05T23:35:00.000Z
+    completed: null
     artifact: ddd-02-technical-design.md
   - name: adr
-    completed: 2026-07-05T23:40:00.000Z
+    completed: null
     artifact: adr-013-search-journey-price-source.md, adr-014-occupancy-required-no-default.md
   - name: implement
-    completed: 2026-07-06T00:00:00.000Z
+    completed: null
     artifact: src/booksaver/monitor/{search_journey,search_check_job,room_table}.py + domain/{journey,offer}.py + occupancy across domain/persistence/CLI
   - name: test
-    completed: 2026-07-06T00:05:00.000Z
+    completed: null
     artifact: ddd-03-test-report.md
 requires_bolts:
   - 001-core-local-data
@@ -42,6 +42,37 @@ complexity:
   avg_uncertainty: 4
   max_dependencies: 4
   testing_scope: 4
+timestamp_provenance:
+  - field: "stages_completed[0].completed"
+    state: "unknown"
+    original_value: "2026-07-05T23:30:00.000Z"
+    evidence_commit: "6ff4afea49088ae25084541e87185ad374ff0e4a"
+    evidence_committed_at: "2026-07-05T23:26:19Z"
+    reason: "Original timestamp is later than the commit that recorded it and conflicts with bolt completion; exact historical execution or authoring time is unknown."
+  - field: "stages_completed[1].completed"
+    state: "unknown"
+    original_value: "2026-07-05T23:35:00.000Z"
+    evidence_commit: "6ff4afea49088ae25084541e87185ad374ff0e4a"
+    evidence_committed_at: "2026-07-05T23:26:19Z"
+    reason: "Original timestamp is later than the commit that recorded it and conflicts with bolt completion; exact historical execution or authoring time is unknown."
+  - field: "stages_completed[2].completed"
+    state: "unknown"
+    original_value: "2026-07-05T23:40:00.000Z"
+    evidence_commit: "6ff4afea49088ae25084541e87185ad374ff0e4a"
+    evidence_committed_at: "2026-07-05T23:26:19Z"
+    reason: "Original timestamp is later than the commit that recorded it and conflicts with bolt completion; exact historical execution or authoring time is unknown."
+  - field: "stages_completed[3].completed"
+    state: "unknown"
+    original_value: "2026-07-06T00:00:00.000Z"
+    evidence_commit: "6ff4afea49088ae25084541e87185ad374ff0e4a"
+    evidence_committed_at: "2026-07-05T23:26:19Z"
+    reason: "Original timestamp is later than the commit that recorded it and conflicts with bolt completion; exact historical execution or authoring time is unknown."
+  - field: "stages_completed[4].completed"
+    state: "unknown"
+    original_value: "2026-07-06T00:05:00.000Z"
+    evidence_commit: "6ff4afea49088ae25084541e87185ad374ff0e4a"
+    evidence_committed_at: "2026-07-05T23:26:19Z"
+    reason: "Original timestamp is later than the commit that recorded it and conflicts with bolt completion; exact historical execution or authoring time is unknown."
 ---
 
 # Bolt: 006-search-journey-monitor
@@ -107,3 +138,10 @@ savings/notification/rebook interfaces and tests remain untouched.
   on the scripted happy path. The browser-agent loop is bolt 007.
 - Journey steps must be individually named and reportable — bolt 007 attaches escalation at exactly
   those seams.
+
+## Historical timestamp correction (Intent 024)
+
+Unreliable chronology fields are explicitly unknown. Their original values and Git recording
+evidence remain in frontmatter. Commit timestamps establish when the metadata was recorded,
+not when tests or design work ran. Completion status and historical test claims are unchanged;
+this correction does not independently verify those claims.

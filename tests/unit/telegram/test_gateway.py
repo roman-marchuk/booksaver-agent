@@ -248,17 +248,12 @@ def test_unauthorized_callback_is_acknowledged_without_dispatch(tmp_path: Path) 
     ]
 
 
-def test_group_callback_is_generically_acknowledged_before_mutation(tmp_path: Path) -> None:
-    from booksaver.infrastructure.persistence.sqlite_store import SqliteBookingRepository
-    from tests.unit.monitor.fakes import make_booking
-
+def test_group_callback_is_generically_acknowledged_before_dispatch(tmp_path: Path) -> None:
     owner_chat_id = 555
     telegram_user_id = 777
-    booking_id = "group-private-boundary"
     db_path = tmp_path / "booksaver.db"
     with SqliteStore(db_path) as store:
-        user = SqliteUserRepository(store).get_or_create_by_telegram_id(telegram_user_id)
-        SqliteBookingRepository(store).add(make_booking(booking_id), user_id=user.user_id)
+        SqliteUserRepository(store).get_or_create_by_telegram_id(telegram_user_id)
 
     stop_event = threading.Event()
     updates_sent = False
@@ -292,7 +287,7 @@ def test_group_callback_is_generically_acknowledged_before_mutation(tmp_path: Pa
                                         "chat": {"id": -100, "type": "supergroup"},
                                         "message_id": 2,
                                     },
-                                    "data": f"bdel:{booking_id}:confirm",
+                                    "data": "admin:users",
                                 },
                             }
                         ],
@@ -319,8 +314,6 @@ def test_group_callback_is_generically_acknowledged_before_mutation(tmp_path: Pa
         }
     ]
     assert edits == []
-    with SqliteStore(db_path) as store:
-        assert SqliteBookingRepository(store).get_by_id(booking_id) is not None
 
 
 def test_end_to_end_owner_status_command_and_stranger_refusal(tmp_path: Path) -> None:

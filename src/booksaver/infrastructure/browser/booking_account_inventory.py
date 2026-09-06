@@ -38,6 +38,7 @@ from booksaver.domain.browser_resilience import (
     TerminalBrowserDiagnosis,
     TerminalBrowserReason,
     operator_action_for_reason,
+    provenance_for_terminal,
     validate_assisted_diagnoses,
 )
 from booksaver.domain.errors import UserKeyInvalidError
@@ -998,7 +999,7 @@ class BookingComAccountInventorySource:
             terminal_diagnosis=_terminal_diagnosis(
                 reason,
                 step_id,
-                provenance=_provenance_for_terminal(reason),
+                provenance=provenance_for_terminal(reason),
                 model_stop_reason=model_stop,
             ),
         )
@@ -1509,7 +1510,7 @@ def _diagnosis_from_escalation(
     model_stop = getattr(result, "model_stop_reason", None)
     if model_stop is not None:
         reason = DOM_STEP_REGISTRY.definition(step_id).reason_for_model_stop(model_stop)
-        provenance = _provenance_for_terminal(reason)
+        provenance = provenance_for_terminal(reason)
         return _terminal_diagnosis(
             reason,
             step_id,
@@ -1532,7 +1533,7 @@ def _diagnosis_from_escalation(
     return _terminal_diagnosis(
         reason,
         step_id,
-        provenance=_provenance_for_terminal(reason),
+        provenance=provenance_for_terminal(reason),
     )
 
 
@@ -1657,7 +1658,7 @@ def _diagnosis_for_inventory_result(
     return _terminal_diagnosis(
         reason,
         step_id,
-        provenance=_provenance_for_terminal(reason),
+        provenance=provenance_for_terminal(reason),
     )
 
 
@@ -1687,36 +1688,8 @@ def _diagnosis_for_recovery_failure(
     return _terminal_diagnosis(
         reason,
         step_id,
-        provenance=_provenance_for_terminal(reason),
+        provenance=provenance_for_terminal(reason),
     )
-
-
-def _provenance_for_terminal(reason: TerminalBrowserReason) -> DiagnosisProvenance:
-    if reason in {
-        TerminalBrowserReason.PROVIDER_AUTHENTICATION,
-        TerminalBrowserReason.PROVIDER_UNAVAILABLE,
-        TerminalBrowserReason.PROVIDER_RATE_LIMIT,
-    }:
-        return DiagnosisProvenance.PROVIDER_STOP
-    if reason in {
-        TerminalBrowserReason.TIME_LIMIT,
-        TerminalBrowserReason.JOB_COST_LIMIT,
-        TerminalBrowserReason.DAILY_COST_LIMIT,
-        TerminalBrowserReason.MODEL_PRICING_UNAVAILABLE,
-        TerminalBrowserReason.COST_ACCOUNTING_ERROR,
-        TerminalBrowserReason.CLOCK_ROLLBACK,
-    }:
-        return DiagnosisProvenance.BUDGET_STOP
-    if reason in {
-        TerminalBrowserReason.AUTHENTICATION_REQUIRED,
-        TerminalBrowserReason.MFA_REQUIRED,
-        TerminalBrowserReason.BOT_WALL,
-        TerminalBrowserReason.BLOCKED_DESTINATION,
-        TerminalBrowserReason.PROHIBITED_ACTION,
-        TerminalBrowserReason.EXPLICIT_UNAVAILABLE,
-    }:
-        return DiagnosisProvenance.DETERMINISTIC
-    return DiagnosisProvenance.POLICY_STOP
 
 
 def _terminal_diagnosis(

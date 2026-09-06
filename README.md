@@ -15,10 +15,11 @@ BookSaver never cancels, books, pays, or runs a rebooking workflow.
 
 ## Current state
 
-The implemented hotel-monitoring scope is complete: **119 in-scope stories, 37 construction bolts,
-and 1,038 automated tests**. The current release includes:
+See the [story index](memory-bank/story-index.md) for delivery and qualification status and the
+[decision index](memory-bank/standards/decision-index.md) for accepted architecture.
+The implementation includes:
 
-- scripted Playwright searches with bounded LLM recovery when a page step changes;
+- bounded Browser Use price/inventory execution and an explicit deterministic/Stagehand rollback;
 - same-property, dates, occupancy, room-type, currency, and refundability checks;
 - local SQLite history, redacted traces, and savings alerts;
 - automatic authenticated-account reservation discovery with visible eligibility reasons;
@@ -29,11 +30,8 @@ and 1,038 automated tests**. The current release includes:
 - immediate same-user `/connect` recovery after a viewer is closed or abandoned;
 - complete user purge across SQLite and encrypted sessions, plus Booking.com-only login navigation.
 
-It is ready for technical review and controlled self-hosting, not broad or untrusted-user
-deployment. Open hardening work includes [journey verification](https://github.com/romkagribok/booksaver-agent/issues/4),
-[failure alerts](https://github.com/romkagribok/booksaver-agent/issues/5), and stronger
-[remote-login isolation](https://github.com/romkagribok/booksaver-agent/issues/6). Other open
-issues are exploratory future capabilities, not missing parts of the current hotel-monitoring scope.
+Use the [issue tracker](https://github.com/romkagribok/booksaver-agent/issues) for current open
+work. Qualification and live acceptance remain explicit gates in the lifecycle artifacts.
 
 ## How it works
 
@@ -260,10 +258,17 @@ and `auth status|delete|import`. Run any command with `--help` for its full argu
 
 ## Development
 
+Install the Python development extras and existing Node validation dependencies before running
+the repository quality gate:
+
 ```bash
+python3 -m pip install -e ".[dev]"
+npm ci
 python3 -m ruff check src tests
 python3 -m mypy src
 python3 -m pytest
+npm run test:aidlc-validator
+npm run validate:aidlc
 ```
 
 Accepted requirements, decisions, and delivery history live in [`memory-bank/`](memory-bank/).

@@ -13,13 +13,14 @@ from booksaver.domain.browser_resilience import (
     TerminalBrowserDiagnosis,
     TerminalBrowserReason,
 )
-from booksaver.domain.check_result import CheckOutcome, ExtractionMethod, FailureCode
+from booksaver.domain.check_result import CheckOutcome, CheckResult, ExtractionMethod, FailureCode
 from booksaver.domain.journey import JourneyResult, JourneyStep, StepOutcome
 from booksaver.domain.model_policy import (
     AdaptiveModelPortfolio,
     ModelRole,
     ModelStopReason,
 )
+from booksaver.domain.models import Booking
 from booksaver.domain.offer import OfferCandidate
 from booksaver.domain.savings import SavingsOpportunity, detect_savings
 from booksaver.domain.user_session import UserSessionMetadata, UserSessionSnapshot
@@ -27,17 +28,13 @@ from booksaver.domain.value_objects import Money, Platform
 from booksaver.infrastructure.llm.adaptive_execution import AdaptiveModelStopped
 from booksaver.monitor.failure_tracker import FailureTracker
 from booksaver.monitor.search_check_job import BookingComSearchMonitor
-from booksaver.monitor.session_manager import SessionManager
 
 from .fakes import (
     FakeAgentBrain,
-    FakeBookingRepository,
     FakeCheckHistoryRepository,
     FakeInteractiveBrowser,
     FakeLLMExtractor,
-    FakeSessionRepository,
     make_booking,
-    make_session,
 )
 
 _PROPERTY_URL = (
@@ -75,17 +72,13 @@ def _user_snapshot(cookies: bytes = b'[{"name":"session"}]') -> UserSessionSnaps
 
 def _monitor(
     browser: FakeInteractiveBrowser,
-    bookings: list | None = None,
     llm: FakeLLMExtractor | None = None,
-    session: FakeSessionRepository | None = None,
     brain: FakeAgentBrain | None = None,
 ) -> tuple[BookingComSearchMonitor, FakeCheckHistoryRepository]:
     history = FakeCheckHistoryRepository()
     monitor = BookingComSearchMonitor(
         browser=browser,
-        session_manager=SessionManager(session or FakeSessionRepository(make_session())),
         check_history=history,
-        booking_repo=FakeBookingRepository(bookings if bookings is not None else []),
         failure_tracker=FailureTracker(history),
         llm=llm,
         brain=brain,
@@ -93,14 +86,21 @@ def _monitor(
     return monitor, history
 
 
+def _run_authenticated(
+    monitor: BookingComSearchMonitor, booking: Booking
+) -> CheckResult:
+    return monitor.run_authenticated(booking, _user_snapshot())
+
+
 class TestOccupancyGuard:
     def test_missing_occupancy_fails_without_browser(self):
         browser = _happy_browser()
         monitor, _ = _monitor(browser)
-        result = monitor.run_check(make_booking(occupancy=None))
+        result = _run_authenticated(monitor, make_booking(occupancy=None))
         assert result.outcome is CheckOutcome.FAILURE
         assert result.failure_reason.code is FailureCode.OCCUPANCY_MISSING
-        assert "set-occupancy" in result.failure_reason.detail
+        assert "/bookings" in result.failure_reason.detail
+        assert "occupancy confirmed by Booking.com" in result.failure_reason.detail
         assert browser.actions == []  # no navigation happened
 
 
@@ -135,14 +135,14 @@ class TestScriptedHappyPath:
         monkeypatch.setattr(search_check_job, "SearchJourney", AssistedJourney)
         monitor, _ = _monitor(_happy_browser())
 
-        result = monitor.run_check(make_booking())
+        result = _run_authenticated(monitor, make_booking())
 
         assert result.outcome is CheckOutcome.SUCCESS
         assert result.assisted_diagnoses == (diagnosis,)
 
     def test_dom_exact_match_success_without_llm(self):
         monitor, _ = _monitor(_happy_browser())
-        result = monitor.run_check(make_booking())
+        result = _run_authenticated(monitor, make_booking())
         assert result.outcome is CheckOutcome.SUCCESS
         assert result.extraction_method is ExtractionMethod.DOM
         assert result.assisted_diagnoses == ()
@@ -152,7 +152,7 @@ class TestScriptedHappyPath:
     def test_success_feeds_existing_savings_detection(self):
         booking = make_booking()  # baseline 400.00 EUR
         monitor, _ = _monitor(_happy_browser())
-        result = monitor.run_check(booking)
+        result = _run_authenticated(monitor, booking)
         detection = detect_savings(booking, result)
         assert isinstance(detection, SavingsOpportunity)
         assert detection.amount_saved.amount == Decimal("50.00")
@@ -160,7 +160,7 @@ class TestScriptedHappyPath:
     def test_extracted_fields_carry_verified_booking_context(self):
         booking = make_booking()
         monitor, _ = _monitor(_happy_browser())
-        result = monitor.run_check(booking)
+        result = _run_authenticated(monitor, booking)
         fields = result.extracted_fields
         assert fields.property_name == booking.property.name
         assert fields.check_in == booking.stay_dates.check_in
@@ -262,7 +262,7 @@ class TestLLMFallback:
         llm = FakeLLMExtractor(offers=[drift_offer])
         booking = make_booking()
         monitor, _ = _monitor(browser, llm=llm)
-        result = monitor.run_check(booking)
+        result = _run_authenticated(monitor, booking)
         assert result.outcome is CheckOutcome.SUCCESS
         assert result.extraction_method is ExtractionMethod.LLM
         assert len(llm.offer_calls) == 1
@@ -292,14 +292,12 @@ class TestLLMFallback:
         history = FakeCheckHistoryRepository()
         monitor = BookingComSearchMonitor(
             browser=browser,
-            session_manager=SessionManager(FakeSessionRepository(make_session())),
             check_history=history,
-            booking_repo=FakeBookingRepository([]),
             failure_tracker=FailureTracker(history),
             adaptive_runtime_factory=lambda booking: Runtime(),  # type: ignore[arg-type,return-value]
         )
 
-        result = monitor.run_check(make_booking())
+        result = _run_authenticated(monitor, make_booking())
 
         assert result.outcome is CheckOutcome.SUCCESS
         assert runtime_calls == ["extractor", "agent", "resolver"]
@@ -325,14 +323,12 @@ class TestLLMFallback:
         history = FakeCheckHistoryRepository()
         monitor = BookingComSearchMonitor(
             browser=browser,
-            session_manager=SessionManager(FakeSessionRepository(make_session())),
             check_history=history,
-            booking_repo=FakeBookingRepository([]),
             failure_tracker=FailureTracker(history),
             adaptive_runtime_factory=lambda booking: Runtime(),  # type: ignore[arg-type,return-value]
         )
 
-        result = monitor.run_check(make_booking())
+        result = _run_authenticated(monitor, make_booking())
 
         assert result.failure_reason is not None
         assert result.failure_reason.code is FailureCode.PROVIDER_RATE_LIMIT
@@ -377,14 +373,12 @@ class TestLLMFallback:
         history = FakeCheckHistoryRepository()
         monitor = BookingComSearchMonitor(
             browser=browser,
-            session_manager=SessionManager(FakeSessionRepository(make_session())),
             check_history=history,
-            booking_repo=FakeBookingRepository([]),
             failure_tracker=FailureTracker(history),
             adaptive_runtime_factory=lambda booking: Runtime(),  # type: ignore[arg-type,return-value]
         )
 
-        result = monitor.run_check(make_booking())
+        result = _run_authenticated(monitor, make_booking())
 
         assert result.outcome is CheckOutcome.SUCCESS
         assert result.live_price == recovered.total
@@ -439,14 +433,12 @@ class TestLLMFallback:
         history = FakeCheckHistoryRepository()
         monitor = BookingComSearchMonitor(
             browser=browser,
-            session_manager=SessionManager(FakeSessionRepository(make_session())),
             check_history=history,
-            booking_repo=FakeBookingRepository([]),
             failure_tracker=FailureTracker(history),
             adaptive_runtime_factory=lambda booking: Runtime(),  # type: ignore[arg-type,return-value]
         )
 
-        result = monitor.run_check(make_booking())
+        result = _run_authenticated(monitor, make_booking())
 
         assert result.outcome is CheckOutcome.SUCCESS
         assert result.live_price == recovered.total
@@ -462,7 +454,7 @@ class TestLLMFallback:
         browser = _happy_browser()
         browser.page_text = "Nothing that looks like a rate table"
         monitor, _ = _monitor(browser, llm=FakeLLMExtractor(offers=[]))
-        result = monitor.run_check(make_booking())
+        result = _run_authenticated(monitor, make_booking())
         assert result.failure_reason.code is FailureCode.DOM_AMBIGUITY
         assert result.terminal_diagnosis is not None
         assert result.terminal_diagnosis.step_id.value == "price_search.offer_extraction"
@@ -503,14 +495,12 @@ class TestLLMFallback:
         history = FakeCheckHistoryRepository()
         monitor = BookingComSearchMonitor(
             browser=browser,
-            session_manager=SessionManager(FakeSessionRepository(make_session())),
             check_history=history,
-            booking_repo=FakeBookingRepository([]),
             failure_tracker=FailureTracker(history),
             adaptive_runtime_factory=lambda booking: Runtime(),  # type: ignore[arg-type,return-value]
         )
 
-        result = monitor.run_check(make_booking())
+        result = _run_authenticated(monitor, make_booking())
 
         assert calls == ["sonnet", "opus:unresolved_low_confidence"]
         assert result.failure_reason is not None
@@ -557,14 +547,12 @@ class TestLLMFallback:
         history = FakeCheckHistoryRepository()
         monitor = BookingComSearchMonitor(
             browser=browser,
-            session_manager=SessionManager(FakeSessionRepository(make_session())),
             check_history=history,
-            booking_repo=FakeBookingRepository([]),
             failure_tracker=FailureTracker(history),
             adaptive_runtime_factory=lambda booking: Runtime(),  # type: ignore[arg-type,return-value]
         )
 
-        result = monitor.run_check(make_booking())
+        result = _run_authenticated(monitor, make_booking())
 
         assert result.failure_reason is not None
         assert result.failure_reason.code is FailureCode.NO_EQUIVALENT_OFFER
@@ -574,7 +562,7 @@ class TestLLMFallback:
         browser = _happy_browser()
         browser.page_text = "Deluxe Suite\n€ 520.00\nNon-refundable"
         monitor, _ = _monitor(browser)
-        result = monitor.run_check(make_booking())
+        result = _run_authenticated(monitor, make_booking())
         assert result.failure_reason.code is FailureCode.NO_EQUIVALENT_OFFER
         assert "not_refundable" in result.failure_reason.detail
 
@@ -582,7 +570,7 @@ class TestLLMFallback:
         browser = _happy_browser()
         browser.page_text = "Deluxe Suite\n€ 520.00\nNon-refundable"
         monitor, _ = _monitor(browser, llm=FakeLLMExtractor(raise_error=True))
-        result = monitor.run_check(make_booking())
+        result = _run_authenticated(monitor, make_booking())
         # DOM found a candidate; it just isn't equivalent
         assert result.failure_reason.code is FailureCode.NO_EQUIVALENT_OFFER
 
@@ -593,7 +581,7 @@ class TestLLMFallback:
         monitor, _ = _monitor(browser, llm=llm)
         monitor.set_llm_enabled(False)
 
-        result = monitor.run_check(make_booking())
+        result = _run_authenticated(monitor, make_booking())
 
         assert result.failure_reason.code is FailureCode.DOM_AMBIGUITY
         assert llm.offer_calls == []
@@ -628,7 +616,7 @@ class TestCurrencyAlignmentRecovery:
         browser.on_goto = _refresh_in_eur
         monitor, _ = _monitor(browser)
 
-        result = monitor.run_check(make_booking())
+        result = _run_authenticated(monitor, make_booking())
 
         assert result.outcome is CheckOutcome.SUCCESS
         assert result.live_price == Money(Decimal("330.00"), "EUR")
@@ -640,7 +628,7 @@ class TestCurrencyAlignmentRecovery:
         browser = self._usd_browser()
         monitor, _ = _monitor(browser)
 
-        result = monitor.run_check(make_booking())
+        result = _run_authenticated(monitor, make_booking())
 
         assert result.failure_reason.code is FailureCode.CURRENCY_MISMATCH
         assert "Baseline EUR" in result.failure_reason.detail
@@ -684,7 +672,7 @@ class TestCurrencyAlignmentRecovery:
         )
         monitor, _ = _monitor(browser, brain=brain)
 
-        result = monitor.run_check(make_booking())
+        result = _run_authenticated(monitor, make_booking())
 
         assert result.outcome is CheckOutcome.SUCCESS
         assert result.live_price == Money(Decimal("325.00"), "EUR")
@@ -701,7 +689,7 @@ class TestCurrencyAlignmentRecovery:
         )
         monitor, _ = _monitor(browser, brain=None)
 
-        result = monitor.run_check(make_booking())
+        result = _run_authenticated(monitor, make_booking())
 
         assert result.failure_reason.code is FailureCode.CURRENCY_MISMATCH
         assert "no browser agent was configured" in result.failure_reason.detail
@@ -719,7 +707,7 @@ class TestJourneyFailureMapping:
         browser = _happy_browser()
         browser.titles = ["Wrong Hotel"]
         monitor, _ = _monitor(browser)
-        result = monitor.run_check(make_booking())
+        result = _run_authenticated(monitor, make_booking())
         assert result.failure_reason.code is FailureCode.DOM_AMBIGUITY
         assert "step=locate_property" in result.failure_reason.detail
 
@@ -732,66 +720,10 @@ class TestJourneyFailureMapping:
             page_text="Log in to your account to continue",
             fail_selectors={"property-card"},
         )
-        monitor, _ = _monitor(browser, session=FakeSessionRepository(make_session()))
-        result = monitor.run_check(make_booking())
+        monitor, _ = _monitor(browser)
+        result = monitor.run_authenticated(make_booking(), _user_snapshot())
         assert result.failure_reason.code is FailureCode.AUTH_REQUIRED
         assert "booksaver auth import" in result.failure_reason.detail
-
-
-class TestRunAllActive:
-    def test_no_session_runs_logged_out_instead_of_failing(self):
-        bookings = [make_booking("b-1"), make_booking("b-2")]
-        browser = _happy_browser()
-        monitor, history = _monitor(
-            browser, bookings=bookings, session=FakeSessionRepository(None)
-        )
-        results = monitor.run_all_active()
-        assert len(results) == 2
-        assert all(r.outcome is CheckOutcome.SUCCESS for r in results)
-        assert len(history.results) == 2
-        # No session existed, so nothing was restored and nothing was saved.
-        assert browser.restored_cookies == []
-
-    def test_checks_recorded_and_cookies_refreshed(self):
-        session_repo = FakeSessionRepository(make_session())
-        bookings = [make_booking("b-1")]
-        monitor, history = _monitor(
-            _happy_browser(), bookings=bookings, session=session_repo
-        )
-        results = monitor.run_all_active()
-        assert len(results) == 1
-        assert results[0].outcome is CheckOutcome.SUCCESS
-        assert history.results[0].check_id == results[0].check_id
-        assert session_repo.saved  # refreshed cookies persisted
-
-    def test_auth_required_marks_reauth_without_refreshing_cookies(self):
-        session_repo = FakeSessionRepository(make_session(b"original-session"))
-        browser = _happy_browser()
-        browser.page_text = "Log in to your account to continue"
-        browser.fail_selectors.add("property-card")
-        monitor, _ = _monitor(
-            browser,
-            bookings=[make_booking("b-1")],
-            session=session_repo,
-        )
-
-        results = monitor.run_all_active()
-
-        assert results[0].failure_reason is not None
-        assert results[0].failure_reason.code is FailureCode.AUTH_REQUIRED
-        assert session_repo.saved[-1].status.value == "requires_reauth"
-        assert all(item.cookies != b'[{"name": "fresh"}]' for item in session_repo.saved)
-
-    def test_mixed_bookings_one_missing_occupancy(self):
-        bookings = [make_booking("b-1", occupancy=None), make_booking("b-2")]
-        monitor, _ = _monitor(_happy_browser(), bookings=bookings)
-        results = monitor.run_all_active()
-        codes = {
-            r.booking_id: r.failure_reason.code if r.failure_reason else None
-            for r in results
-        }
-        assert codes["b-1"] is FailureCode.OCCUPANCY_MISSING
-        assert codes["b-2"] is None  # succeeded
 
 
 class _FakeLLMClientFactory:
@@ -825,13 +757,11 @@ class TestHybridBillingIntegration:
         factory = _FakeLLMClientFactory(raise_error=True)
         monitor = BookingComSearchMonitor(
             browser=_happy_browser(),
-            session_manager=SessionManager(FakeSessionRepository(make_session())),
             check_history=history,
-            booking_repo=FakeBookingRepository([]),
             failure_tracker=FailureTracker(history),
             llm_factory=factory,
         )
-        result = monitor.run_check(make_booking())
+        result = _run_authenticated(monitor, make_booking())
         assert result.outcome is CheckOutcome.FAILURE
         assert result.failure_reason.code is FailureCode.USER_KEY_INVALID
         assert factory.calls == ["b-1"]
@@ -841,12 +771,10 @@ class TestHybridBillingIntegration:
         factory = _FakeLLMClientFactory(raise_error=False)
         monitor = BookingComSearchMonitor(
             browser=_happy_browser(),
-            session_manager=SessionManager(FakeSessionRepository(make_session())),
             check_history=history,
-            booking_repo=FakeBookingRepository([]),
             failure_tracker=FailureTracker(history),
             llm_factory=factory,
         )
-        result = monitor.run_check(make_booking())
+        result = _run_authenticated(monitor, make_booking())
         assert result.outcome is CheckOutcome.SUCCESS
         assert factory.calls == ["b-1"]

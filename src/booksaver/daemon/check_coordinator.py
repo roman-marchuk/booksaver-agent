@@ -143,7 +143,6 @@ from booksaver.infrastructure.persistence.sqlite_store import (
 from booksaver.monitor.browser_agent import BrowserAgent
 from booksaver.monitor.failure_tracker import FailureTracker
 from booksaver.monitor.search_check_job import BookingComSearchMonitor
-from booksaver.monitor.session_manager import SessionManager
 from booksaver.monitor.trace import TraceRecorder
 from booksaver.monitor.user_limits import (
     DailyCounter,
@@ -320,16 +319,6 @@ class _LazyCountedInventoryInterpreter:
             return self._delegate.interpret(page_text, source_url)
         finally:
             self._usage.record_delegate_call(self._delegate, default_role="inventory_interpreter")
-
-
-class _UnavailableLegacySessionRepository:
-    """Null object preventing accidental daemon fallback to legacy global cookies."""
-
-    def load(self, _platform: Any) -> None:
-        return None
-
-    def save(self, _session: Any) -> None:
-        raise RuntimeError("Legacy global session writes are disabled in the daemon")
 
 
 class _DailyCappedSpendLedger:
@@ -2266,11 +2255,7 @@ class CheckCoordinator:
             )
         monitor = BookingComSearchMonitor(
             browser=browser,
-            # Kept only for the legacy run_all_active API; owner-bound daemon
-            # execution below never resolves or falls back to this global state.
-            session_manager=SessionManager(_UnavailableLegacySessionRepository()),
             check_history=history,
-            booking_repo=SqliteBookingRepository(store),
             failure_tracker=FailureTracker(history),
             llm_factory=(
                 # A coordinated outer job must account for every provider call in its shared

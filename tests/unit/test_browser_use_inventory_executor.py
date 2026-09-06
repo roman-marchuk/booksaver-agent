@@ -18,6 +18,7 @@ import pytest
 from PIL import Image
 from pydantic import BaseModel
 
+import booksaver.infrastructure.browser.browser_use_runtime as runtime_adapter
 from booksaver.application.async_runner import AsyncLoopRunner
 from booksaver.application.browser_executor import ExecutionMeter, InMemorySessionLeaseBroker
 from booksaver.application.model_policy import BrowserJobCostBudget
@@ -49,8 +50,7 @@ from booksaver.domain.model_policy import (
 )
 from booksaver.infrastructure.browser.browser_use_inventory_executor import (
     _BROWSER_USE_INVENTORY_ENTRY_URL,
-    BrowserUseActionGuard,
-    BrowserUseCostStop,
+    _EXPECTED_ACTIONS,
     BrowserUseInventoryBrowserExecutor,
     BrowserUseObservationPayload,
     BrowserUseReservationFactsSubmission,
@@ -58,34 +58,37 @@ from booksaver.infrastructure.browser.browser_use_inventory_executor import (
     BrowserUseReservationSubmission,
     BrowserUseRuntimeResult,
     BrowserUseTerminalPayload,
-    GuardedVisualClick,
-    LocalBrowserUseRuntime,
-    _account_navigation_rejection_reason,
-    _agent_history_diagnostic,
+    LocalBrowserUseInventoryRuntime,
     _attach_reservation_facts,
-    _authenticated_account_navigation,
-    _browser_request_allowed,
-    _continued_action_result,
-    _coordinate_chain_click_decision,
     _current_visible_saved_reservation,
-    _hardened_session_type,
     _inventory_agent_task,
-    _is_unsafe_watchdog_handler,
     _map_browser_use_observation,
     _map_observation,
-    _model_type,
-    _node_chain_allows_click,
-    _node_chain_click_decision,
-    _prepare_environment,
-    _qualified_output_format,
     _record_reservation_identity,
-    _remember_visible_semantic_state,
-    _same_tab_click_destination,
-    _screenshot_has_visible_content,
     _terminal_status,
-    _validation_diagnostic,
-    _viewport_coordinates,
     _visible_saved_reservation_match,
+)
+from booksaver.infrastructure.browser.browser_use_runtime import (
+    BrowserUseActionGuard,
+    BrowserUseCostStop,
+    BrowserUseSessionHost,
+    BrowserUseSessionStatus,
+    GuardedVisualClick,
+    agent_history_diagnostic,
+    browser_request_allowed,
+    budgeted_model_type,
+    continued_action_result,
+    coordinate_chain_click_decision,
+    hardened_session_type,
+    is_unsafe_watchdog_handler,
+    node_chain_click_decision,
+    prepare_browser_use_environment,
+    qualified_output_format,
+    remember_visible_semantic_state,
+    same_tab_click_destination,
+    screenshot_has_visible_content,
+    validation_diagnostic,
+    viewport_coordinates,
 )
 
 
@@ -100,11 +103,15 @@ def _png_data(*, foreground: int | None = None) -> str:
     return base64.b64encode(output.getvalue()).decode("ascii")
 
 
+def _inventory_model_type(base: type[Any]) -> type[Any]:
+    return budgeted_model_type(base, "browser-use-inventory-v1")
+
+
 @pytest.mark.parametrize("status", [200, 202])
 def test_settled_protected_account_navigation_is_authentication_evidence(
     status: int,
 ) -> None:
-    assert _authenticated_account_navigation(
+    assert runtime_adapter._authenticated_account_navigation(
         status=status,
         content_type="text/html; charset=utf-8",
         final_url="https://secure.booking.com/myaccount.html",
@@ -143,8 +150,8 @@ def test_signed_out_or_challenged_account_navigation_is_rejected(
         "final_url": final_url,
         "rendered_html": rendered_html,
     }
-    assert not _authenticated_account_navigation(**evidence)
-    assert _account_navigation_rejection_reason(**evidence) == reason
+    assert not runtime_adapter._authenticated_account_navigation(**evidence)
+    assert runtime_adapter._account_navigation_rejection_reason(**evidence) == reason
 
 
 class _Ledger:
@@ -349,18 +356,18 @@ def test_click_chain_rejects_nested_mutation_and_cross_target_frames() -> None:
         target_id="cross-origin-frame",
     )
 
-    assert not _node_chain_allows_click(
+    assert not node_chain_click_decision(
         BrowserUseActionGuard(),
         node=nested_child,
         current_url="https://secure.booking.com/myreservations.html",
         active_target_id="active-target",
-    )
-    assert not _node_chain_allows_click(
+    ).allowed
+    assert not node_chain_click_decision(
         BrowserUseActionGuard(),
         node=external_frame_child,
         current_url="https://secure.booking.com/myreservations.html",
         active_target_id="active-target",
-    )
+    ).allowed
 
 
 def test_click_chain_ignores_aggregate_text_on_structural_ancestors() -> None:
@@ -377,7 +384,7 @@ def test_click_chain_ignores_aggregate_text_on_structural_ancestors() -> None:
     )
     nested_child = _Node("More", {}, parent_node=safe_link)
 
-    decision = _node_chain_click_decision(
+    decision = node_chain_click_decision(
         BrowserUseActionGuard(),
         node=nested_child,
         current_url="https://secure.booking.com/mytrips.html",
@@ -396,13 +403,13 @@ def test_click_chain_requires_interactive_ancestor_and_still_checks_structural_a
         node_name="footer",
     )
 
-    no_interactive = _node_chain_click_decision(
+    no_interactive = node_chain_click_decision(
         BrowserUseActionGuard(),
         node=plain_container,
         current_url="https://secure.booking.com/mytrips.html",
         active_target_id="active-target",
     )
-    unsafe_attribute = _node_chain_click_decision(
+    unsafe_attribute = node_chain_click_decision(
         BrowserUseActionGuard(),
         node=unsafe_container,
         current_url="https://secure.booking.com/mytrips.html",
@@ -422,7 +429,7 @@ def test_click_chain_classifies_app_install_link_before_execution() -> None:
         node_name="a",
     )
 
-    decision = _node_chain_click_decision(
+    decision = node_chain_click_decision(
         BrowserUseActionGuard(),
         node=app_link,
         current_url="https://secure.booking.com/mytrips.html",
@@ -434,7 +441,7 @@ def test_click_chain_classifies_app_install_link_before_execution() -> None:
 
 
 def test_visual_click_chain_reuses_generic_read_only_guard() -> None:
-    safe = _coordinate_chain_click_decision(
+    safe = coordinate_chain_click_decision(
         BrowserUseActionGuard(),
         chain=[
             {"node_name": "span", "label": "West Lafayette", "attributes": {}, "visible": True},
@@ -447,7 +454,7 @@ def test_visual_click_chain_reuses_generic_read_only_guard() -> None:
         ],
         current_url="https://secure.booking.com/mytrips.html",
     )
-    unsafe = _coordinate_chain_click_decision(
+    unsafe = coordinate_chain_click_decision(
         BrowserUseActionGuard(),
         chain=[
             {
@@ -472,7 +479,7 @@ def test_visual_click_coordinates_are_bounded_and_scaled_to_css_viewport() -> No
     )
 
     assert GuardedVisualClick(coordinate_x=412, coordinate_y=839)
-    assert _viewport_coordinates(
+    assert viewport_coordinates(
         session,
         coordinate_x=412,
         coordinate_y=839,
@@ -489,13 +496,13 @@ def test_safe_popup_link_is_normalized_to_guarded_same_tab_destination() -> None
     guard = BrowserUseActionGuard()
     current_url = "https://secure.booking.com/mytrips.html"
 
-    assert _node_chain_allows_click(
+    assert node_chain_click_decision(
         guard,
         node=nested_child,
         current_url=current_url,
         active_target_id="active-target",
-    )
-    assert _same_tab_click_destination(
+    ).allowed
+    assert same_tab_click_destination(
         guard,
         node=nested_child,
         current_url=current_url,
@@ -519,13 +526,13 @@ def test_safe_popup_link_is_normalized_to_guarded_same_tab_destination() -> None
     ],
 )
 def test_browser_network_egress_is_allowlisted(url: str, allowed: bool) -> None:
-    assert _browser_request_allowed(url) is allowed
+    assert browser_request_allowed(url) is allowed
 
 
 def test_browser_use_enters_canonical_https_inventory_without_allowing_legacy_redirect() -> None:
     assert _BROWSER_USE_INVENTORY_ENTRY_URL == "https://secure.booking.com/mytrips.html"
-    assert _browser_request_allowed(_BROWSER_USE_INVENTORY_ENTRY_URL)
-    assert not _browser_request_allowed("http://secure.booking.com/mytrips.html")
+    assert browser_request_allowed(_BROWSER_USE_INVENTORY_ENTRY_URL)
+    assert not browser_request_allowed("http://secure.booking.com/mytrips.html")
 
 
 def test_typed_observation_maps_only_bounded_positive_evidence() -> None:
@@ -843,7 +850,7 @@ def test_large_semantic_state_is_bounded_instead_of_discarded() -> None:
             return SimpleNamespace(dom_state=_DomState())
 
     snapshots: list[str] = []
-    ready = asyncio.run(_remember_visible_semantic_state(_Session(), snapshots))
+    ready = asyncio.run(remember_visible_semantic_state(_Session(), snapshots))
 
     assert ready is True
     assert len(snapshots) == 1
@@ -852,9 +859,9 @@ def test_large_semantic_state_is_bounded_instead_of_discarded() -> None:
 
 
 def test_screenshot_readiness_rejects_blank_frame_and_accepts_visible_content() -> None:
-    assert _screenshot_has_visible_content(_png_data()) is False
-    assert _screenshot_has_visible_content(_png_data(foreground=0)) is True
-    assert _screenshot_has_visible_content("not-an-image") is False
+    assert screenshot_has_visible_content(_png_data()) is False
+    assert screenshot_has_visible_content(_png_data(foreground=0)) is True
+    assert screenshot_has_visible_content("not-an-image") is False
 
 
 def test_agent_semantic_match_requires_one_exact_saved_stay() -> None:
@@ -909,7 +916,7 @@ def test_qualified_output_removes_disabled_planning_fields_before_strict_optimiz
         current_plan_item: int | None = None
         plan_update: list[str] | None = None
 
-    qualified = _qualified_output_format(_Output)
+    qualified = qualified_output_format(_Output)
     schema = SchemaOptimizer.create_optimized_json_schema(qualified)
 
     assert "current_plan_item" not in schema["properties"]
@@ -929,6 +936,45 @@ def test_qualified_output_removes_disabled_planning_fields_before_strict_optimiz
         ),
         _Output,
     )
+
+
+def test_shared_host_constructs_agent_with_qualified_configuration() -> None:
+    captured: dict[str, Any] = {}
+
+    class _Agent:
+        def __init__(self, **kwargs: Any) -> None:
+            captured.update(kwargs)
+            self.agent_directory = (
+                Path(tempfile.gettempdir())
+                / f"browser_use_agent_{kwargs['task_id']}_constructor-spy"
+            )
+
+    def callback(*_args: Any, **_kwargs: Any) -> None:
+        return None
+
+    host = BrowserUseSessionHost()
+    agent = host.create_agent(
+        _Agent,
+        task="bounded task",
+        task_id="shared-config-test",
+        llm=object(),
+        browser_session=object(),
+        tools=object(),
+        viewport={"width": 412, "height": 839},
+        file_system_dir=Path(tempfile.gettempdir()) / "booksaver-agent-files",
+        deadline=datetime.now(UTC) + timedelta(minutes=3),
+        register_done_callback=callback,
+    )
+
+    assert agent is not None
+    assert captured["use_vision"] is True
+    assert captured["llm_screenshot_size"] == (412, 839)
+    assert captured["max_actions_per_step"] == 1
+    assert captured["calculate_cost"] is False
+    assert captured["directly_open_url"] is False
+    assert captured["enable_planning"] is False
+    assert captured["register_done_callback"] is callback
+    asyncio.run(host.close())
 
 
 def test_browser_use_mapping_downgrades_malformed_optional_facts_to_unknown() -> None:
@@ -987,12 +1033,13 @@ def test_provider_cannot_claim_code_owned_terminal_status(status: str) -> None:
 def test_continued_action_result_matches_qualified_browser_use_contract() -> None:
     from browser_use import ActionResult
 
-    result = _continued_action_result(ActionResult, "Content-free correction")
+    result = continued_action_result(ActionResult, "Content-free correction")
 
     assert result.is_done is False
     assert result.success is None
     assert result.error is None
     assert result.extracted_content == "Content-free correction"
+    assert result.include_extracted_content_only_once is True
     with pytest.raises(ValueError, match="success=True can only be set when is_done=True"):
         ActionResult(is_done=False, success=True, extracted_content="invalid")
 
@@ -1018,7 +1065,7 @@ def test_agent_history_diagnostic_logs_only_bounded_categories() -> None:
         ]
     )
 
-    diagnostic = _agent_history_diagnostic(history)
+    diagnostic = agent_history_diagnostic(history, _EXPECTED_ACTIONS)
 
     assert diagnostic.steps == 2
     assert diagnostic.actions == ("guarded_click", "unknown")
@@ -1034,7 +1081,7 @@ def test_validation_diagnostic_exposes_only_closed_schema_categories() -> None:
         "submit_inventory_observation: [type=string_type, input_value=SECRET]"
     )
 
-    diagnostic = _validation_diagnostic(raw)
+    diagnostic = validation_diagnostic(raw, _EXPECTED_ACTIONS)
 
     assert diagnostic == (
         "validation:submit_inventory_observation:booked_total:string_type"
@@ -1071,7 +1118,7 @@ def test_hardened_session_removes_unsafe_watchdogs() -> None:
         async def attach_all_watchdogs(self) -> None:
             return None
 
-    session = _hardened_session_type(_Base)()
+    session = hardened_session_type(_Base)()
     asyncio.run(session.attach_all_watchdogs())
 
     assert session.event_bus.handlers["dialog"] == [safe_handler]
@@ -1087,9 +1134,9 @@ def test_unsafe_watchdog_recognition_covers_wrappers_and_bound_methods() -> None
         def on_save(self) -> None:
             return None
 
-    assert _is_unsafe_watchdog_handler(wrapped_handler) is True
-    assert _is_unsafe_watchdog_handler(StorageStateWatchdog().on_save) is True
-    assert _is_unsafe_watchdog_handler(lambda: None) is False
+    assert is_unsafe_watchdog_handler(wrapped_handler) is True
+    assert is_unsafe_watchdog_handler(StorageStateWatchdog().on_save) is True
+    assert is_unsafe_watchdog_handler(lambda: None) is False
 
 
 def test_qualified_browser_use_release_has_no_unsafe_watchdog_handlers(
@@ -1098,7 +1145,7 @@ def test_qualified_browser_use_release_has_no_unsafe_watchdog_handlers(
     from browser_use import BrowserProfile, BrowserSession
 
     async def inspect_handlers() -> set[str]:
-        session_type = _hardened_session_type(BrowserSession)
+        session_type = hardened_session_type(BrowserSession)
         session = session_type(
             browser_profile=BrowserProfile(
                 headless=True,
@@ -1150,7 +1197,7 @@ def test_real_confirm_is_rejected_without_executing_mutation(tmp_path: Path) -> 
             executable_path = playwright.chromium.executable_path
         finally:
             await playwright.stop()
-        session_type = _hardened_session_type(BrowserSession)
+        session_type = hardened_session_type(BrowserSession)
         session = session_type(
             browser_profile=BrowserProfile(
                 executable_path=executable_path,
@@ -1165,13 +1212,13 @@ def test_real_confirm_is_rejected_without_executing_mutation(tmp_path: Path) -> 
                 captcha_solver=False,
             )
         )
-        runtime = LocalBrowserUseRuntime()
-        runtime._session = session  # noqa: SLF001 - real adapter safety fixture
-        runtime._root = runtime_root  # noqa: SLF001 - real adapter teardown fixture
+        host = BrowserUseSessionHost()
+        host._session = session  # noqa: SLF001 - real adapter safety fixture
+        host._root = runtime_root  # noqa: SLF001 - real adapter teardown fixture
         try:
             await session.start()
-            await runtime._install_network_guard(session)  # noqa: SLF001
-            await runtime._install_dialog_guard(session)  # noqa: SLF001
+            await host._install_network_guard(session)  # noqa: SLF001
+            await host._install_dialog_guard(session)  # noqa: SLF001
             page_session = await session.get_or_create_cdp_session()
             result = await asyncio.wait_for(
                 page_session.cdp_client.send.Runtime.evaluate(
@@ -1205,12 +1252,12 @@ def test_real_confirm_is_rejected_without_executing_mutation(tmp_path: Path) -> 
             blocked_value = blocked.get("result", {}).get("value")
             return (
                 int(value),
-                runtime._state.dialog_rejected,  # noqa: SLF001
+                host.dialog_rejected,
                 str(blocked_value),
-                runtime._blocked_network_requests,  # noqa: SLF001
+                host.blocked_network_requests,
             )
         finally:
-            await runtime.close()
+            await host.close()
 
     mutation_count, rejected, fetch_result, blocked_count = asyncio.run(run_fixture())
 
@@ -1226,7 +1273,7 @@ def test_budgeted_model_repr_never_contains_api_key() -> None:
         def __init__(self, **_kwargs: Any) -> None:
             return None
 
-    model = _model_type(_Base)(api_key="super-secret", budget=_budget(), meter=object())
+    model = _inventory_model_type(_Base)(api_key="super-secret", budget=_budget(), meter=object())
 
     assert "super-secret" not in repr(model)
     assert "super-secret" not in str(model)
@@ -1279,16 +1326,30 @@ class _ReconciliationFailureLedger(_Ledger):
         raise RuntimeError("ledger-sensitive-failure")
 
 
-def test_budgeted_model_reconciles_cache_read_and_creation_pricing_exactly() -> None:
-    ledger = _Ledger()
+def _budgeted_model(
+    model_base: type[Any],
+    *,
+    ledger: _Ledger | None = None,
+    max_job_cost: UsdAmount | None = None,
+) -> tuple[Any, ExecutionMeter, _Ledger]:
+    active_ledger = ledger if ledger is not None else _Ledger()
+    limit_options = {"max_job_cost": max_job_cost} if max_job_cost is not None else {}
     meter = ExecutionMeter(
-        ExecutionLimits(deadline=datetime.now(UTC) + timedelta(minutes=3))
+        ExecutionLimits(
+            deadline=datetime.now(UTC) + timedelta(minutes=3),
+            **limit_options,
+        )
     )
-    model = _model_type(_SuccessfulModelBase)(
+    model = _inventory_model_type(model_base)(
         api_key="test-key",
-        budget=_budget(ledger),
+        budget=_budget(active_ledger),
         meter=meter,
     )
+    return model, meter, active_ledger
+
+
+def test_budgeted_model_reconciles_cache_read_and_creation_pricing_exactly() -> None:
+    model, meter, ledger = _budgeted_model(_SuccessfulModelBase)
 
     asyncio.run(model.ainvoke([]))
 
@@ -1303,15 +1364,7 @@ def test_budgeted_model_reconciles_cache_read_and_creation_pricing_exactly() -> 
 def test_budgeted_model_failure_reconciles_conservatively_without_logging_content(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    ledger = _Ledger()
-    meter = ExecutionMeter(
-        ExecutionLimits(deadline=datetime.now(UTC) + timedelta(minutes=3))
-    )
-    model = _model_type(_FailingModelBase)(
-        api_key="test-key",
-        budget=_budget(ledger),
-        meter=meter,
-    )
+    model, _, ledger = _budgeted_model(_FailingModelBase)
 
     with pytest.raises(RuntimeError, match="provider-content"):
         asyncio.run(model.ainvoke([]))
@@ -1321,15 +1374,7 @@ def test_budgeted_model_failure_reconciles_conservatively_without_logging_conten
 
 
 def test_budgeted_model_timeout_reconciles_conservatively() -> None:
-    ledger = _Ledger()
-    meter = ExecutionMeter(
-        ExecutionLimits(deadline=datetime.now(UTC) + timedelta(minutes=3))
-    )
-    model = _model_type(_TimeoutModelBase)(
-        api_key="test-key",
-        budget=_budget(ledger),
-        meter=meter,
-    )
+    model, _, ledger = _budgeted_model(_TimeoutModelBase)
 
     with pytest.raises(TimeoutError, match="provider-timeout"):
         asyncio.run(model.ainvoke([]))
@@ -1338,15 +1383,7 @@ def test_budgeted_model_timeout_reconciles_conservatively() -> None:
 
 
 def test_budgeted_model_cancellation_reconciles_then_preserves_cancellation() -> None:
-    ledger = _Ledger()
-    meter = ExecutionMeter(
-        ExecutionLimits(deadline=datetime.now(UTC) + timedelta(minutes=3))
-    )
-    model = _model_type(_BlockingModelBase)(
-        api_key="test-key",
-        budget=_budget(ledger),
-        meter=meter,
-    )
+    model, _, ledger = _budgeted_model(_BlockingModelBase)
 
     async def cancel_call() -> None:
         task = asyncio.create_task(model.ainvoke([]))
@@ -1361,15 +1398,7 @@ def test_budgeted_model_cancellation_reconciles_then_preserves_cancellation() ->
 
 
 def test_budgeted_model_admission_denial_stops_before_provider_call() -> None:
-    ledger = _DeniedLedger()
-    meter = ExecutionMeter(
-        ExecutionLimits(deadline=datetime.now(UTC) + timedelta(minutes=3))
-    )
-    model = _model_type(_SuccessfulModelBase)(
-        api_key="test-key",
-        budget=_budget(ledger),
-        meter=meter,
-    )
+    model, _, ledger = _budgeted_model(_SuccessfulModelBase, ledger=_DeniedLedger())
 
     with pytest.raises(BrowserUseCostStop) as stopped:
         asyncio.run(model.ainvoke([]))
@@ -1379,14 +1408,9 @@ def test_budgeted_model_admission_denial_stops_before_provider_call() -> None:
 
 
 def test_budgeted_model_reconciliation_failure_stops_fail_closed() -> None:
-    ledger = _ReconciliationFailureLedger()
-    meter = ExecutionMeter(
-        ExecutionLimits(deadline=datetime.now(UTC) + timedelta(minutes=3))
-    )
-    model = _model_type(_SuccessfulModelBase)(
-        api_key="test-key",
-        budget=_budget(ledger),
-        meter=meter,
+    model, _, _ = _budgeted_model(
+        _SuccessfulModelBase,
+        ledger=_ReconciliationFailureLedger(),
     )
 
     with pytest.raises(BrowserUseCostStop) as stopped:
@@ -1396,17 +1420,9 @@ def test_budgeted_model_reconciliation_failure_stops_fail_closed() -> None:
 
 
 def test_budgeted_model_stops_when_reconciled_cost_exceeds_execution_cap() -> None:
-    ledger = _Ledger()
-    meter = ExecutionMeter(
-        ExecutionLimits(
-            deadline=datetime.now(UTC) + timedelta(minutes=3),
-            max_job_cost=UsdAmount(1),
-        )
-    )
-    model = _model_type(_SuccessfulModelBase)(
-        api_key="test-key",
-        budget=_budget(ledger),
-        meter=meter,
+    model, _, _ = _budgeted_model(
+        _SuccessfulModelBase,
+        max_job_cost=UsdAmount(1),
     )
 
     with pytest.raises(BrowserUseCostStop) as stopped:
@@ -1420,18 +1436,14 @@ def test_initial_authentication_is_code_verified_before_agent_execution(
 ) -> None:
     broker = InMemorySessionLeaseBroker()
     request = _request(broker)
-    runtime = LocalBrowserUseRuntime()
+    host = BrowserUseSessionHost()
 
-    async def verified(_browser_session: object, _cdp_url: str) -> bytes | None:
+    async def verified(_browser_session: object) -> bytes | None:
         return b"verified-session"
 
-    monkeypatch.setattr(runtime, "_verified_session_refresh", verified)
+    monkeypatch.setattr(host, "_verified_session_refresh", verified)
     terminal = asyncio.run(
-            runtime._initial_authentication_terminal(  # noqa: SLF001 - trust-boundary test
-                request,
-                object(),
-                "ws://127.0.0.1/devtools/browser/test",
-        )
+        host.verify_authentication(request, object())
     )
 
     assert terminal is None
@@ -1451,23 +1463,22 @@ def test_initial_authentication_failure_stops_before_agent(
 ) -> None:
     broker = InMemorySessionLeaseBroker()
     request = _request(broker)
-    runtime = LocalBrowserUseRuntime()
+    host = BrowserUseSessionHost()
 
-    async def fail(_browser_session: object, _cdp_url: str) -> bytes | None:
+    async def fail(_browser_session: object) -> bytes | None:
         if failure == "provider":
             raise RuntimeError("content-bearing-probe-failure")
         return None
 
-    monkeypatch.setattr(runtime, "_verified_session_refresh", fail)
-    terminal = asyncio.run(
-            runtime._initial_authentication_terminal(  # noqa: SLF001 - trust-boundary test
-                request,
-                object(),
-                "ws://127.0.0.1/devtools/browser/test",
-        )
-    )
+    monkeypatch.setattr(host, "_verified_session_refresh", fail)
+    terminal = asyncio.run(host.verify_authentication(request, object()))
 
-    assert terminal is expected
+    expected_status = (
+        BrowserUseSessionStatus.SIGNED_OUT
+        if expected is InventoryExecutionStatus.SIGNED_OUT
+        else BrowserUseSessionStatus.PROVIDER_FAILURE
+    )
+    assert terminal is expected_status
 
 
 def test_post_agent_refresh_failure_preserves_verified_observation(
@@ -1475,7 +1486,7 @@ def test_post_agent_refresh_failure_preserves_verified_observation(
 ) -> None:
     broker = InMemorySessionLeaseBroker()
     request = _request(broker)
-    runtime = LocalBrowserUseRuntime()
+    runtime = LocalBrowserUseInventoryRuntime()
     observation = BrowserUseObservationPayload(
         authenticated="true",
         scopes=[],
@@ -1483,18 +1494,13 @@ def test_post_agent_refresh_failure_preserves_verified_observation(
     )
     runtime._state.observation = observation  # noqa: SLF001 - callback contract test
 
-    async def fail(_browser_session: object, _cdp_url: str) -> bytes | None:
+    async def fail(_browser_session: object) -> bytes | None:
         raise TimeoutError("content-bearing-refresh-timeout")
 
-    monkeypatch.setattr(runtime, "_verified_session_refresh", fail)
-    asyncio.run(
-            runtime._refresh_after_observation(  # noqa: SLF001 - callback contract test
-                request,
-                object(),
-                "ws://127.0.0.1/devtools/browser/test",
-        )
-    )
+    monkeypatch.setattr(runtime._host, "_verified_session_refresh", fail)  # noqa: SLF001
+    refreshed = asyncio.run(runtime._host.capture_verified_session(request, object()))  # noqa: SLF001
 
+    assert refreshed is None
     assert runtime._state.observation is observation  # noqa: SLF001
     assert runtime._state.terminal is None  # noqa: SLF001
     assert runtime._state.refreshed_session is None  # noqa: SLF001
@@ -1511,7 +1517,7 @@ def test_confinement_environment_disables_external_services(
     ):
         monkeypatch.delenv(name, raising=False)
 
-    _prepare_environment()
+    prepare_browser_use_environment()
 
     assert __import__("os").environ["ANONYMIZED_TELEMETRY"] == "false"
     assert __import__("os").environ["BROWSER_USE_CLOUD_SYNC"] == "false"
@@ -1524,7 +1530,7 @@ def test_dependency_logs_cannot_propagate_page_or_provider_content(
 ) -> None:
     import logging
 
-    _prepare_environment()
+    prepare_browser_use_environment()
     logging.getLogger("browser_use.agent.service").error(
         "https://secure.booking.com/?secret=session-content"
     )
@@ -1582,7 +1588,7 @@ def test_executor_logs_content_free_runtime_stage_on_failure(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     class _FailingRuntime(_Runtime):
-        _failure_stage = "environment_prepare"
+        failure_stage = "environment_prepare"
 
         async def execute(self, *_args: Any, **_kwargs: Any) -> BrowserUseRuntimeResult:
             raise PermissionError("content-bearing-path")
@@ -1636,7 +1642,7 @@ def test_executor_preserves_safety_terminal_and_closes_runtime() -> None:
 
 
 def test_local_runtime_cleanup_deletes_only_owned_transient_paths(tmp_path: Path) -> None:
-    runtime = LocalBrowserUseRuntime()
+    runtime = BrowserUseSessionHost()
     owned = tmp_path / "browser-use-owned"
     owned.mkdir()
     (owned / "artifact.txt").write_text("ephemeral", encoding="utf-8")
@@ -1648,7 +1654,7 @@ def test_local_runtime_cleanup_deletes_only_owned_transient_paths(tmp_path: Path
 
 
 def test_local_runtime_cleanup_removes_constructor_failure_namespace_only() -> None:
-    runtime = LocalBrowserUseRuntime()
+    runtime = BrowserUseSessionHost()
     run_id = f"booksaver-{uuid.uuid4().hex}"
     owned = Path(tempfile.mkdtemp(prefix=f"browser_use_agent_{run_id}_"))
     neighbor = Path(tempfile.mkdtemp(prefix="browser_use_agent_neighbor_"))
@@ -1666,16 +1672,14 @@ def test_job_teardown_preserves_process_wide_content_free_directories(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import booksaver.infrastructure.browser.browser_use_inventory_executor as adapter
-
     config_dir = tmp_path / "process-config"
     cache_dir = tmp_path / "process-cache"
     owned_root = tmp_path / "job-root"
     owned_root.mkdir()
-    monkeypatch.setattr(adapter, "_CONFIG_DIR", config_dir)
-    monkeypatch.setattr(adapter, "_CACHE_DIR", cache_dir)
-    adapter._prepare_environment()  # noqa: SLF001 - process environment contract
-    runtime = LocalBrowserUseRuntime()
+    monkeypatch.setattr(runtime_adapter, "_CONFIG_DIR", config_dir)
+    monkeypatch.setattr(runtime_adapter, "_CACHE_DIR", cache_dir)
+    runtime_adapter.prepare_browser_use_environment()  # noqa: SLF001 - process environment contract
+    runtime = BrowserUseSessionHost()
     runtime._root = owned_root  # noqa: SLF001 - teardown contract test
 
     asyncio.run(runtime.close())

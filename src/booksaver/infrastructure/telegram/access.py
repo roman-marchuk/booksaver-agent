@@ -51,32 +51,10 @@ class RateLimiter:
             return allowed
 
 
-class OwnerGuard:
-    """Owner-only access guard (FR-2, until unit 002 adds real multi-user access modes).
-
-    Every update is resolved to the sender's chat id; only the configured owner
-    chat id may trigger commands or dialogs. Non-owner chats get exactly one
-    polite refusal per rate-limit window and are silently dropped thereafter —
-    no state change or LLM call is ever triggered for them.
-    """
-
-    def __init__(self, owner_chat_id: int, refusal_limiter: RateLimiter | None = None) -> None:
-        self._owner_chat_id = owner_chat_id
-        self._limiter = refusal_limiter or RateLimiter(max_events=1, window_seconds=3600.0)
-
-    def is_owner(self, chat_id: int) -> bool:
-        return chat_id == self._owner_chat_id
-
-    def should_send_refusal(self, chat_id: int) -> bool:
-        """Whether a refusal message should be sent now for `chat_id` (rate-limited)."""
-        return self._limiter.allow(chat_id)
-
-
 class AccessControl:
     """Invite-only multi-user access control for a discoverable bot.
 
-    Supersedes `OwnerGuard` for production wiring (kept above for its
-    existing unit tests / bolt-008 compatibility). Every update is resolved
+    Every update is resolved
     to a `User` via `UserRepository`, never trusted from message content:
 
     - The owner (`owner_chat_id`) is always allowed — this is a chat-id

@@ -34,6 +34,14 @@ conventions:
     pattern: "YYYY-MM-DDTHH:MM:SSZ"
     example: "2024-12-05T10:30:00Z"
     note: "ALL timestamps in memory-bank artifacts MUST include time, not just date"
+    historical_unknowns:
+      note: "Use only when immutable evidence proves a recorded timestamp is unreliable and the exact historical time cannot be recovered; never substitute a commit time for an execution time."
+      representation: "Set the affected timestamp field to null and add exactly one timestamp_provenance entry for that field."
+      required_provenance_fields: [field, state, original_value, evidence_commit, evidence_committed_at, reason]
+      state: "unknown"
+      evidence_commit: "Full 40-character commit SHA"
+      evidence_committed_at: "Canonical YYYY-MM-DDTHH:MM:SSZ commit timestamp used only as provenance"
+      legacy_stage_names: "Historical stages_completed entries containing only a stage name remain valid; their chronology is unavailable and validators warn rather than infer timestamps."
     applies_to:
       - "created, started, completed fields in bolt files"
       - "stages_completed entries"
@@ -101,5 +109,3 @@ story-index:
   #   3. aggregate: Auto-generated from unit-level stories (computed, not stored)
   mode: "single-file"
   path: "memory-bank/story-index.md"
-
-

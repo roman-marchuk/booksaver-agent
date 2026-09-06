@@ -447,23 +447,6 @@ def _reservation_from_item(
     )
 
 
-def has_non_authoritative_inventory_negative_claims(
-    observation: ReservationObservation,
-) -> bool:
-    """Whether an LLM observation contains facts that must not drive removal.
-
-    Seeing a reservation is positive existence evidence. Model claims that it is
-    cancelled/completed or non-refundable remain useful audit hints, but callers
-    must conservatively merge them and must not archive, remove, or deactivate a
-    previously known reservation from these fields alone.
-    """
-    return observation.extraction_method == LLM_INVENTORY_EXTRACTION_METHOD and (
-        observation.lifecycle
-        in (ReservationLifecycle.CANCELLED, ReservationLifecycle.COMPLETED)
-        or observation.refundable is False
-    )
-
-
 def parse_inventory_response(
     raw: str, source_url: str, *, observed_at: datetime | None = None
 ) -> tuple[ReservationObservation, ...]:

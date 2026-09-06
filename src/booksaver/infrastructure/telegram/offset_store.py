@@ -9,7 +9,7 @@ class TelegramOffsetStore:
     """Persists the last-processed Telegram update offset (US-023).
 
     A restart neither drops nor replays updates: the offset is written after
-    each processed batch, mirroring `LocalSessionRepository`'s plain-file pattern.
+    each processed batch in the locally controlled data directory.
     """
 
     def __init__(self, data_dir: DataDirectory) -> None:

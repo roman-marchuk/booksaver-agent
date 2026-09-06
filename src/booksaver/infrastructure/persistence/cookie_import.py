@@ -153,9 +153,8 @@ def import_cookies(
         cookies=json.dumps(booking_cookies).encode("utf-8"),
         authenticated_at=now,
         # Conservative: the session-level expiry is the *earliest* cookie's
-        # expiry, so `SessionManager.ensure_active/current_mode` fall back to
-        # LOGGED_OUT (and prompt re-import) as soon as any imported cookie
-        # goes stale, rather than only once every cookie has.
+        # expiry, so caller-scoped session health rejects the snapshot as soon
+        # as any imported cookie goes stale.
         expires_at=earliest_expiry,
     )
     return session, ImportSummary(
