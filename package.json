@@ -1,6 +1,10 @@
 {
   "name": "booksaver-agent-tooling",
   "private": true,
+  "scripts": {
+    "test:aidlc-validator": "node --test .specsmd/aidlc/scripts/*.test.cjs",
+    "validate:aidlc": "node .specsmd/aidlc/scripts/artifact-validator.cjs && node .specsmd/aidlc/scripts/status-integrity.cjs"
+  },
   "dependencies": {
     "fs-extra": "^11.3.5",
     "js-yaml": "^4.3.0"

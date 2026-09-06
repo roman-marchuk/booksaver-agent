@@ -15,7 +15,6 @@ from booksaver.application.browser_resilience import DOM_STEP_REGISTRY
 from booksaver.application.model_policy import AdaptiveModelStopped
 from booksaver.application.ports import (
     AgentBrain,
-    BookingRepository,
     CheckHistoryRepository,
     CheckTraceRepository,
     InteractiveBrowser,
@@ -62,7 +61,6 @@ from booksaver.monitor import room_table
 from booksaver.monitor.browser_agent import BrowserAgent
 from booksaver.monitor.failure_tracker import FailureTracker
 from booksaver.monitor.search_journey import SearchJourney
-from booksaver.monitor.session_manager import SessionManager
 from booksaver.monitor.trace import SnapshotWriter, TraceRecorder
 
 if TYPE_CHECKING:
@@ -131,17 +129,12 @@ def _model_stop_diagnosis(step_id: DomStepId, reason: ModelStopReason) -> Termin
 
 
 class BookingComSearchMonitor:
-    """Search-flow price monitor (ADR-013): replaces the manage-page monitor as
-    the sole producer of live prices. Same never-raise contract and session
-    handling as bolt 003's BookingComMonitor.
-    """
+    """Owner-bound search-flow price monitor (ADR-013/025)."""
 
     def __init__(
         self,
         browser: InteractiveBrowser,
-        session_manager: SessionManager,
         check_history: CheckHistoryRepository,
-        booking_repo: BookingRepository,
         failure_tracker: FailureTracker,
         llm: LLMExtractor | None = None,
         brain: AgentBrain | None = None,
@@ -161,9 +154,7 @@ class BookingComSearchMonitor:
         room_equivalence_policy: (Callable[[str, Booking], tuple[bool, float]] | None) = None,
     ) -> None:
         self._browser = browser
-        self._sessions = session_manager
         self._history = check_history
-        self._bookings = booking_repo
         self._failures = failure_tracker
         self._llm = llm
         self._brain = brain
@@ -214,63 +205,6 @@ class BookingComSearchMonitor:
         """Disable both extractor and agent resolution for a DOM-only check."""
         self._llm_enabled = enabled
 
-    def run_all_active(self, bookings: list[Booking] | None = None) -> list[CheckResult]:
-        """Scheduler job entry point: check every active booking, never raise.
-
-        `bookings` defaults to every active booking (`self._bookings.list_active()`,
-        pre-US-031 behavior). A caller doing per-user fair scheduling / daily
-        check caps (US-031) instead computes its own ordered subset (e.g. via
-        `monitor.user_limits.build_check_plan`) and passes it here.
-        """
-        results: list[CheckResult] = []
-        bookings = self._bookings.list_active() if bookings is None else bookings
-        if not bookings:
-            logger.info("No active bookings to check")
-            return results
-
-        session = self._sessions.ensure_active()
-        if session is None:
-            # No usable session on this deployment (typical on a display-less
-            # VPS, where headed `booksaver auth` cannot run): fall back to
-            # logged-out mode rather than failing every booking (US-035,
-            # FR-8). The search journey works unauthenticated and returns
-            # real public bookable totals.
-            mode = SessionMode.LOGGED_OUT
-            logger.info(
-                "No active Booking.com session — running %d booking(s) logged out (public prices).",
-                len(bookings),
-            )
-        else:
-            mode = SessionMode.AUTHENTICATED
-            try:
-                self._browser.restore_cookies(session.cookies)
-            except Exception as exc:
-                logger.error("Failed to restore session cookies: %s", exc)
-                self._sessions.mark_reauth_required(session)
-                return results
-
-        reauth_flagged = False
-        for booking in bookings:
-            result = self.run_check(booking, session_mode=mode)
-            self._record(result)
-            results.append(result)
-            if (
-                session is not None
-                and not reauth_flagged
-                and result.failure_reason is not None
-                and result.failure_reason.code is FailureCode.AUTH_REQUIRED
-            ):
-                self._sessions.mark_reauth_required(session)
-                reauth_flagged = True
-
-        if session is not None and not reauth_flagged and self._browser.is_authenticated():
-            try:
-                self._sessions.save_refreshed(session, self._browser.get_cookies())
-            except Exception as exc:
-                logger.warning("Could not save refreshed cookies: %s", exc)
-
-        return results
-
     def run_authenticated(self, booking: Booking, snapshot: UserSessionSnapshot) -> CheckResult:
         """Run one fail-closed owner-bound check and persist its result."""
         if self._agentic_route is not None and self._agentic_route.use_agentic:
@@ -320,7 +254,7 @@ class BookingComSearchMonitor:
             self._record(result)
             return result
 
-        result = self.run_check(
+        result = self._run_check(
             booking,
             session_mode=SessionMode.AUTHENTICATED,
             session_revision_id=snapshot.metadata.revision_id,
@@ -502,7 +436,7 @@ class BookingComSearchMonitor:
             PriceExecutionStatus.NO_VALID_OBSERVATION: FailureCode.EXTRACTION_FAILED,
         }.get(status, FailureCode.EXTRACTION_FAILED)
 
-    def run_check(
+    def _run_check(
         self,
         booking: Booking,
         session_mode: SessionMode = SessionMode.AUTHENTICATED,
@@ -589,8 +523,8 @@ class BookingComSearchMonitor:
                 FailureReason(
                     code=FailureCode.OCCUPANCY_MISSING,
                     detail=(
-                        "Booking predates the occupancy field. Run: booksaver bookings "
-                        f"set-occupancy {booking.booking_id} --adults N"
+                        "Booking occupancy is unavailable. Refresh your reservations with "
+                        "/bookings; checks require occupancy confirmed by Booking.com."
                     ),
                 ),
             )

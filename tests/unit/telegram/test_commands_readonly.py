@@ -48,7 +48,6 @@ from booksaver.infrastructure.persistence.scheduled_check_slots import (
 )
 from booksaver.infrastructure.persistence.sqlite_store import (
     SqliteAccountReservationRepository,
-    SqliteBookingRepository,
     SqliteCheckHistoryRepository,
     SqliteStore,
     SqliteUserRepository,
@@ -60,6 +59,7 @@ from booksaver.infrastructure.telegram.router import (
     IncomingCallback,
     IncomingCommand,
 )
+from tests.support.bookings import seed_booking
 
 
 def _register_caller(db_path: Path, telegram_id: int) -> int:
@@ -241,10 +241,9 @@ def test_status_reports_only_callers_booking_count_without_exact_records(tmp_pat
     caller_id = _register_caller(db_path, telegram_id=1)
     foreign_id = _register_caller(db_path, telegram_id=2)
     with SqliteStore(db_path) as store:
-        repo = SqliteBookingRepository(store)
-        repo.add(_booking("caller-booking"), user_id=caller_id)
-        repo.add(_booking("foreign-one"), user_id=foreign_id)
-        repo.add(_booking("foreign-two"), user_id=foreign_id)
+        seed_booking(store, _booking("caller-booking"), user_id=caller_id)
+        seed_booking(store, _booking("foreign-one"), user_id=foreign_id)
+        seed_booking(store, _booking("foreign-two"), user_id=foreign_id)
         SqliteCheckHistoryRepository(store).add(
             CheckResult.success(
                 booking_id="caller-booking",
@@ -647,7 +646,7 @@ def test_bookings_unrecognized_sender_gets_polite_refusal(tmp_path: Path) -> Non
     db_path, router, sent, _sched = _setup(tmp_path)
     user_id = _register_caller(db_path, telegram_id=1)
     with SqliteStore(db_path) as store:
-        SqliteBookingRepository(store).add(_booking(), user_id=user_id)
+        seed_booking(store, _booking(), user_id=user_id)
 
     router.dispatch(_cmd("/bookings", chat_id=999))  # never linked to a user
     assert sent[0][1] == "You're not recognized by this bot."
@@ -696,7 +695,7 @@ def test_checks_without_id_offers_owned_booking_buttons(tmp_path: Path) -> None:
     user_id = _register_caller(db_path, telegram_id=1)
     booking_id = "f42b63a9-00d1-49f1-b0c4-544f5ab60fcf"
     with SqliteStore(db_path) as store:
-        SqliteBookingRepository(store).add(_booking(booking_id), user_id=user_id)
+        seed_booking(store, _booking(booking_id), user_id=user_id)
 
     router.dispatch(_cmd("/checks", chat_id=1))
 
@@ -711,7 +710,7 @@ def test_checks_picker_callback_renders_recent_history(tmp_path: Path) -> None:
     user_id = _register_caller(db_path, telegram_id=1)
     booking_id = "f42b63a9-00d1-49f1-b0c4-544f5ab60fcf"
     with SqliteStore(db_path) as store:
-        SqliteBookingRepository(store).add(_booking(booking_id), user_id=user_id)
+        seed_booking(store, _booking(booking_id), user_id=user_id)
         SqliteCheckHistoryRepository(store).add(
             CheckResult.failure(
                 booking_id,
@@ -743,7 +742,7 @@ def test_checks_picker_renders_even_when_callback_acknowledgement_fails(
     user_id = _register_caller(db_path, telegram_id=1)
     booking_id = "f42b63a9-00d1-49f1-b0c4-544f5ab60fcf"
     with SqliteStore(db_path) as store:
-        SqliteBookingRepository(store).add(_booking(booking_id), user_id=user_id)
+        seed_booking(store, _booking(booking_id), user_id=user_id)
 
     callbacks.dispatch(
         IncomingCallback(
@@ -767,7 +766,7 @@ def test_checks_picker_logs_edit_failure_without_raising(tmp_path: Path, caplog)
     user_id = _register_caller(db_path, telegram_id=1)
     booking_id = "f42b63a9-00d1-49f1-b0c4-544f5ab60fcf"
     with SqliteStore(db_path) as store:
-        SqliteBookingRepository(store).add(_booking(booking_id), user_id=user_id)
+        seed_booking(store, _booking(booking_id), user_id=user_id)
 
     assert callbacks.dispatch(
         IncomingCallback(
@@ -789,7 +788,7 @@ def test_checks_picker_callback_cannot_read_another_users_booking(tmp_path: Path
     _register_caller(db_path, telegram_id=2)
     booking_id = "f42b63a9-00d1-49f1-b0c4-544f5ab60fcf"
     with SqliteStore(db_path) as store:
-        SqliteBookingRepository(store).add(_booking(booking_id), user_id=owner_a)
+        seed_booking(store, _booking(booking_id), user_id=owner_a)
 
     callbacks.dispatch(
         IncomingCallback(
@@ -817,7 +816,7 @@ def test_checks_reports_recent_history_including_failures(tmp_path: Path) -> Non
     db_path, router, sent, _sched = _setup(tmp_path)
     user_id = _register_caller(db_path, telegram_id=1)
     with SqliteStore(db_path) as store:
-        SqliteBookingRepository(store).add(_booking(), user_id=user_id)
+        seed_booking(store, _booking(), user_id=user_id)
         history = SqliteCheckHistoryRepository(store)
         history.add(
             CheckResult.failure(
@@ -838,7 +837,7 @@ def test_checks_reports_authenticated_mobile_source_without_unobserved_genius_st
     db_path, router, sent, _sched = _setup(tmp_path)
     user_id = _register_caller(db_path, telegram_id=1)
     with SqliteStore(db_path) as store:
-        SqliteBookingRepository(store).add(_booking(), user_id=user_id)
+        seed_booking(store, _booking(), user_id=user_id)
         SqliteCheckHistoryRepository(store).add(
             CheckResult.success(
                 "b-1",
@@ -866,7 +865,7 @@ def test_checks_accepts_unique_displayed_booking_id_prefix(tmp_path: Path) -> No
     user_id = _register_caller(db_path, telegram_id=1)
     full_id = "f42b63a9-00d1-49f1-b0c4-544f5ab60fcf"
     with SqliteStore(db_path) as store:
-        SqliteBookingRepository(store).add(_booking(full_id), user_id=user_id)
+        seed_booking(store, _booking(full_id), user_id=user_id)
         SqliteCheckHistoryRepository(store).add(
             CheckResult.failure(
                 full_id,
@@ -884,9 +883,16 @@ def test_checks_rejects_ambiguous_displayed_booking_id_prefix(tmp_path: Path) ->
     db_path, router, sent, _sched = _setup(tmp_path)
     user_id = _register_caller(db_path, telegram_id=1)
     with SqliteStore(db_path) as store:
-        repo = SqliteBookingRepository(store)
-        repo.add(_booking("f42b63a9-0000-4000-8000-000000000001"), user_id=user_id)
-        repo.add(_booking("f42b63a9-0000-4000-8000-000000000002"), user_id=user_id)
+        seed_booking(
+            store,
+            _booking("f42b63a9-0000-4000-8000-000000000001"),
+            user_id=user_id,
+        )
+        seed_booking(
+            store,
+            _booking("f42b63a9-0000-4000-8000-000000000002"),
+            user_id=user_id,
+        )
 
     router.dispatch(_cmd("/checks", args="f42b63a9", chat_id=1))
 
@@ -897,8 +903,10 @@ def test_checks_rejects_prefix_shorter_than_displayed_id(tmp_path: Path) -> None
     db_path, router, sent, _sched = _setup(tmp_path)
     user_id = _register_caller(db_path, telegram_id=1)
     with SqliteStore(db_path) as store:
-        SqliteBookingRepository(store).add(
-            _booking("f42b63a9-00d1-49f1-b0c4-544f5ab60fcf"), user_id=user_id
+        seed_booking(
+            store,
+            _booking("f42b63a9-00d1-49f1-b0c4-544f5ab60fcf"),
+            user_id=user_id,
         )
 
     router.dispatch(_cmd("/checks", args="f42b63a", chat_id=1))
@@ -912,7 +920,7 @@ def test_checks_does_not_resolve_another_users_prefix(tmp_path: Path) -> None:
     _register_caller(db_path, telegram_id=2)
     full_id = "f42b63a9-00d1-49f1-b0c4-544f5ab60fcf"
     with SqliteStore(db_path) as store:
-        SqliteBookingRepository(store).add(_booking(full_id), user_id=user_a)
+        seed_booking(store, _booking(full_id), user_id=user_a)
 
     router.dispatch(_cmd("/checks", args="f42b63a9", chat_id=2))
 
@@ -923,7 +931,7 @@ def test_checks_unknown_booking_reports_none_found(tmp_path: Path) -> None:
     db_path, router, sent, _sched = _setup(tmp_path)
     user_id = _register_caller(db_path, telegram_id=1)
     with SqliteStore(db_path) as store:
-        SqliteBookingRepository(store).add(_booking(), user_id=user_id)
+        seed_booking(store, _booking(), user_id=user_id)
 
     router.dispatch(_cmd("/checks", args="unknown-id", chat_id=1))
     assert "No checks recorded for booking" in sent[0][1]
@@ -935,7 +943,7 @@ def test_checks_another_users_booking_reports_none_found(tmp_path: Path) -> None
     user_a = _register_caller(db_path, telegram_id=1)
     user_b = _register_caller(db_path, telegram_id=2)
     with SqliteStore(db_path) as store:
-        SqliteBookingRepository(store).add(_booking("b-1"), user_id=user_a)
+        seed_booking(store, _booking("b-1"), user_id=user_a)
         history = SqliteCheckHistoryRepository(store)
         history.add(
             CheckResult.failure(

@@ -10,7 +10,6 @@ import pytest
 from booksaver.application.browser_executor import (
     AgenticPriceExecutionService,
     ExecutionMeter,
-    FakePriceBrowserExecutor,
     InMemorySessionLeaseBroker,
 )
 from booksaver.application.load_config import load_config
@@ -46,6 +45,7 @@ from booksaver.domain.browser_executor import (
 from booksaver.domain.errors import ConfigValidationError
 from booksaver.domain.model_policy import UsdAmount
 from booksaver.domain.value_objects import Money, Occupancy, StayDates
+from tests.support.executors import FakePriceBrowserExecutor
 
 NOW = datetime(2026, 8, 17, 3, tzinfo=UTC)
 
@@ -64,7 +64,7 @@ def _lease() -> SessionLeaseReference:
     return SessionLeaseReference(
         lease_id="lease-1",
         owner_user_id=7,
-        booking_id="booking-1",
+        subject_id="booking-1",
         execution_id="execution-1",
         expires_at=NOW + timedelta(minutes=4),
     )
@@ -432,7 +432,7 @@ def _issued_broker() -> tuple[InMemorySessionLeaseBroker, SessionLeaseReference]
     broker = InMemorySessionLeaseBroker(clock=lambda: NOW)
     reference = broker.issue(
         owner_user_id=7,
-        booking_id="booking-1",
+        subject_id="booking-1",
         execution_id="execution-1",
         session_material=b"original-secret",
     )

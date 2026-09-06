@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import TypeVar
 
 from booksaver.application.browser_executor import InMemorySessionLeaseBroker
-from booksaver.application.ports import InventoryBrowserExecutor
+from booksaver.application.ports import InventoryBrowserExecutor, SessionLeaseBroker
 from booksaver.domain.account_sync import (
     InventoryCompleteness,
     InventoryDiscoveryResult,
@@ -200,20 +200,6 @@ class InventoryObservationValidator:
         )
 
 
-class FakeInventoryBrowserExecutor:
-    """Deterministic inventory port fake for application and orchestration tests."""
-
-    def __init__(self, results: Iterable[InventoryExecutionResult]) -> None:
-        self._results = list(results)
-        self.requests: list[InventoryExecutionRequest] = []
-
-    def execute(self, request: InventoryExecutionRequest) -> InventoryExecutionResult:
-        self.requests.append(request)
-        if not self._results:
-            raise RuntimeError("fake inventory executor has no queued result")
-        return self._results.pop(0)
-
-
 @dataclass(frozen=True, slots=True)
 class InventoryExecutionOutcome:
     result: InventoryExecutionResult
@@ -228,7 +214,7 @@ class InventoryExecutionService:
     def __init__(
         self,
         executor: InventoryBrowserExecutor,
-        lease_broker: InMemorySessionLeaseBroker,
+        lease_broker: SessionLeaseBroker,
         validator: InventoryObservationValidator | None = None,
     ) -> None:
         self._executor = executor

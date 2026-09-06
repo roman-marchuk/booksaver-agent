@@ -14,7 +14,7 @@ from booksaver.evaluation import (
     load_fixture_directory,
 )
 
-FIXTURE_DIRECTORY = Path(__file__).parents[2] / "fixtures" / "browser_recovery"
+FIXTURE_DIRECTORY = curated_fixture_directory()
 
 
 def _raw_fixture(name: str = "unsupported-layout.json") -> dict[str, Any]:
@@ -41,36 +41,17 @@ def test_curated_fixture_directory_loads_in_stable_order() -> None:
     assert all(fixture.states for fixture in fixtures)
 
 
-def test_packaged_fixtures_match_and_load_like_the_test_corpus() -> None:
-    packaged_directory = curated_fixture_directory()
-    test_files = sorted(FIXTURE_DIRECTORY.glob("*.json"))
-    packaged_files = sorted(packaged_directory.glob("*.json"))
-
-    assert packaged_directory.is_dir()
-    assert [path.name for path in packaged_files] == [path.name for path in test_files]
-    assert [path.read_bytes() for path in packaged_files] == [
-        path.read_bytes() for path in test_files
-    ]
-    assert [fixture.fixture_id for fixture in load_fixture_directory(packaged_directory)] == [
-        fixture.fixture_id for fixture in load_fixture_directory(FIXTURE_DIRECTORY)
-    ]
-
-
 def test_all_curated_urls_are_query_free_https_booking_destinations() -> None:
     for fixture in load_fixture_directory(FIXTURE_DIRECTORY):
         for state in fixture.states:
             urls = [state.observation.url, *state.observation.popup_urls]
             urls.extend(
-                element.href
-                for element in state.observation.elements
-                if element.href is not None
+                element.href for element in state.observation.elements if element.href is not None
             )
             for url in urls:
                 parsed = urlsplit(url)
                 assert parsed.scheme == "https"
-                assert parsed.hostname == "booking.com" or parsed.hostname.endswith(
-                    ".booking.com"
-                )
+                assert parsed.hostname == "booking.com" or parsed.hostname.endswith(".booking.com")
                 assert not parsed.query
                 assert not parsed.fragment
 
@@ -106,9 +87,7 @@ def test_loader_rejects_non_allowlisted_or_unsanitized_urls(
         "Open https://example.test/collect",
     ],
 )
-def test_loader_rejects_secret_or_pii_shaped_content(
-    tmp_path: Path, sensitive_text: str
-) -> None:
+def test_loader_rejects_secret_or_pii_shaped_content(tmp_path: Path, sensitive_text: str) -> None:
     raw = _raw_fixture()
     raw["states"][0]["observation"]["text"] = sensitive_text
 

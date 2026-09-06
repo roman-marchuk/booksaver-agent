@@ -11,14 +11,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-import tempfile
 import time
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
-from typing import Any, Literal, Protocol, cast
+from typing import Any, Literal, Protocol
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -44,29 +42,34 @@ from booksaver.infrastructure.browser.agentic_executor import (
     _trusted_input_values,
     build_trusted_search_url,
 )
-from booksaver.infrastructure.browser.browser_use_inventory_executor import (
-    _ALLOWED_DOMAINS,
-    _STOCK_ACTIONS,
-    _UNSAFE_LABEL_TERMS,
+from booksaver.infrastructure.browser.browser_use_normalization import (
+    normalize_provider_scalar,
+    provider_tri_state,
+)
+from booksaver.infrastructure.browser.browser_use_runtime import (
+    ALLOWED_DOMAINS,
+    STOCK_ACTIONS,
+    UNSAFE_LABEL_TERMS,
     BrowserUseActionGuard,
     BrowserUseCostStop,
     BrowserUseRuntimeFailure,
+    BrowserUseSessionHost,
+    BrowserUseSessionStatus,
     GuardedClick,
     GuardedKey,
     GuardedScroll,
     GuardedVisualClick,
     GuardedWait,
-    LocalBrowserUseRuntime,
-    _agent_history_diagnostic,
-    _browser_use_screenshot_available,
-    _continued_action_result,
-    _coordinate_chain_click_decision,
-    _coordinate_hit_test_chain,
-    _model_type,
-    _node_chain_click_decision,
-    _remember_visible_semantic_state,
-    _same_tab_click_destination,
-    _viewport_coordinates,
+    agent_history_diagnostic,
+    browser_use_screenshot_available,
+    budgeted_model_type,
+    continued_action_result,
+    coordinate_chain_click_decision,
+    coordinate_hit_test_chain,
+    node_chain_click_decision,
+    remember_visible_semantic_state,
+    same_tab_click_destination,
+    viewport_coordinates,
 )
 
 logger = logging.getLogger(__name__)
@@ -120,13 +123,7 @@ class BrowserUsePriceQuerySubmission(BaseModel):
     )
     @classmethod
     def normalize_provider_scalar(cls, value: object) -> object:
-        if value is None:
-            return "unknown"
-        if isinstance(value, bool):
-            return "true" if value else "false"
-        if isinstance(value, (int, float)):
-            return str(value)
-        return value if isinstance(value, str) else "unknown"
+        return normalize_provider_scalar(value)
 
 
 class BrowserUsePriceOfferSubmission(BaseModel):
@@ -158,13 +155,7 @@ class BrowserUsePriceOfferSubmission(BaseModel):
     )
     @classmethod
     def normalize_provider_scalar(cls, value: object) -> object:
-        if value is None:
-            return "unknown"
-        if isinstance(value, bool):
-            return "true" if value else "false"
-        if isinstance(value, (int, float)):
-            return str(value)
-        return value if isinstance(value, str) else "unknown"
+        return normalize_provider_scalar(value)
 
 
 class BrowserUsePriceObservationSubmission(BrowserUsePriceQuerySubmission):
@@ -233,12 +224,7 @@ def _terminal_status(raw: object) -> PriceExecutionStatus:
 
 
 def _tri_state(raw: object) -> bool | None:
-    normalized = str(raw).strip().casefold()
-    if normalized in {"true", "yes", "visible", "present", "1"}:
-        return True
-    if normalized in {"false", "no", "not_visible", "absent", "0"}:
-        return False
-    return None
+    return provider_tri_state(raw)
 
 
 def _trusted_input_node_allowed(
@@ -289,7 +275,7 @@ def _trusted_input_node_allowed(
         )
     )[:4_000]
     return (
-        _UNSAFE_LABEL_TERMS.search(label) is None
+        UNSAFE_LABEL_TERMS.search(label) is None
         and _SENSITIVE_INPUT_TERMS.search(label) is None
     )
 
@@ -409,16 +395,12 @@ class LocalBrowserUsePriceRuntime:
         guard: BrowserUseActionGuard | None = None,
     ) -> None:
         self._guard = guard or BrowserUseActionGuard()
-        self._host = LocalBrowserUseRuntime(mobile_settings, guard=self._guard)
+        self._host = BrowserUseSessionHost(mobile_settings)
         self._price_state = _PriceEpisodeState()
 
     @property
-    def _failure_stage(self) -> str:
-        return self._host._failure_stage
-
-    @_failure_stage.setter
-    def _failure_stage(self, value: str) -> None:
-        self._host._failure_stage = value
+    def failure_stage(self) -> str:
+        return self._host.failure_stage
 
     def restore_session(self, data: bytes) -> None:
         self._host.restore_session(data)
@@ -431,7 +413,10 @@ class LocalBrowserUsePriceRuntime:
         budget: BrowserJobCostBudget,
         meter: ExecutionMeter,
     ) -> BrowserUsePriceRuntimeResult:
-        session, viewport, file_system_dir = await self._host._start_session()
+        hosted = await self._host.start()
+        session = hosted.browser
+        viewport = hosted.viewport
+        file_system_dir = hosted.file_system_dir
         try:
             from browser_use import ActionResult, Agent, ChatAnthropic, Tools
             from browser_use.browser.events import (
@@ -446,24 +431,18 @@ class LocalBrowserUsePriceRuntime:
         except ImportError as exc:
             raise RuntimeError("Browser Use 0.11.13 runtime is not installed") from exc
 
-        self._failure_stage = "session_bootstrap"
-        await self._host._bootstrap.apply(session.cdp_url)
-        self._failure_stage = "authentication_probe"
-        authentication_terminal = await self._host._initial_authentication_terminal(
-            request,
-            session,
-            session.cdp_url,
-        )
+        self._host.failure_stage = "authentication_probe"
+        authentication_terminal = await self._host.verify_authentication(request, session)
         if authentication_terminal is not None:
             return BrowserUsePriceRuntimeResult(
                 PriceExecutionStatus.TIMEOUT
-                if authentication_terminal.value == "timeout"
+                if authentication_terminal is BrowserUseSessionStatus.TIMEOUT
                 else PriceExecutionStatus.SIGNED_OUT
-                if authentication_terminal.value == "signed_out"
+                if authentication_terminal is BrowserUseSessionStatus.SIGNED_OUT
                 else PriceExecutionStatus.PROVIDER_FAILURE
             )
 
-        self._failure_stage = "price_navigation"
+        self._host.failure_stage = "price_navigation"
         meter.record_action()
         entry_destination, entry_kind = _price_entry_url(request)
         await session.navigate_to(entry_destination, new_tab=False)
@@ -482,7 +461,7 @@ class LocalBrowserUsePriceRuntime:
 
         semantic_ready = False
         for attempt in range(30):
-            semantic_ready = await _remember_visible_semantic_state(
+            semantic_ready = await remember_visible_semantic_state(
                 session,
                 self._price_state.visible_dom_snapshots,
                 log_failure=attempt == 0,
@@ -490,7 +469,7 @@ class LocalBrowserUsePriceRuntime:
             if semantic_ready:
                 break
             await asyncio.sleep(0.5)
-        screenshot_ready = await _browser_use_screenshot_available(session)
+        screenshot_ready = await browser_use_screenshot_available(session)
         logger.info(
             "Browser Use price model-view preflight execution_id=%s semantic_ready=%s "
             "screenshot_ready=%s entry_kind=%s blocked_requests=%s blocked_hosts=%s",
@@ -498,14 +477,14 @@ class LocalBrowserUsePriceRuntime:
             semantic_ready,
             screenshot_ready,
             entry_kind,
-            self._host._blocked_network_requests,
-            ",".join(sorted(self._host._blocked_network_hosts)) or "none",
+            self._host.blocked_network_requests,
+            ",".join(sorted(self._host.blocked_network_hosts)) or "none",
         )
         if not semantic_ready and not screenshot_ready:
             return BrowserUsePriceRuntimeResult(PriceExecutionStatus.PROVIDER_FAILURE)
 
         tools: Any = Tools(
-            exclude_actions=list(_STOCK_ACTIONS), display_files_in_done_text=False
+            exclude_actions=list(STOCK_ACTIONS), display_files_in_done_text=False
         )
         tools.registry.registry.actions.clear()
 
@@ -524,7 +503,7 @@ class LocalBrowserUsePriceRuntime:
 
         async def action_invariant(browser_session: Any, *, phase: str) -> bool:
             reason: str | None = None
-            if self._host._state.dialog_rejected:
+            if self._host.dialog_rejected:
                 reason = "dialog_rejected"
             elif len(browser_session.get_page_targets()) != 1:
                 reason = "target_count"
@@ -546,7 +525,7 @@ class LocalBrowserUsePriceRuntime:
         async def before_action(browser_session: Any) -> bool:
             allowed = await action_invariant(browser_session, phase="before")
             if allowed:
-                await _remember_visible_semantic_state(
+                await remember_visible_semantic_state(
                     browser_session,
                     self._price_state.visible_dom_snapshots,
                 )
@@ -559,7 +538,7 @@ class LocalBrowserUsePriceRuntime:
             "Click one visible read-only Booking.com price or property element after safety "
             "checks.",
             param_model=GuardedClick,
-            allowed_domains=_ALLOWED_DOMAINS,
+            allowed_domains=ALLOWED_DOMAINS,
             terminates_sequence=True,
         )
         async def guarded_click(  # type: ignore[no-untyped-def]
@@ -576,7 +555,7 @@ class LocalBrowserUsePriceRuntime:
                 self._price_state.terminal = PriceExecutionStatus.BUDGET_EXHAUSTED
                 return ActionResult(is_done=True, success=False, error="Action limit reached")
             current_url = await browser_session.get_current_page_url()
-            decision = _node_chain_click_decision(
+            decision = node_chain_click_decision(
                 self._guard,
                 current_url=current_url,
                 node=node,
@@ -589,12 +568,12 @@ class LocalBrowserUsePriceRuntime:
                     decision.reason,
                     decision.depth,
                 )
-                return _continued_action_result(
+                return continued_action_result(
                     ActionResult,
                     "BookSaver rejected this control before execution; choose a visible "
                     "read-only property, room, rate, or disclosure control",
                 )
-            same_tab_destination = _same_tab_click_destination(
+            same_tab_destination = same_tab_click_destination(
                 self._guard,
                 node=node,
                 current_url=current_url,
@@ -612,7 +591,7 @@ class LocalBrowserUsePriceRuntime:
         @tools.action(  # type: ignore[untyped-decorator]
             "Click one visible read-only Booking.com price control by screenshot coordinates.",
             param_model=GuardedVisualClick,
-            allowed_domains=_ALLOWED_DOMAINS,
+            allowed_domains=ALLOWED_DOMAINS,
             terminates_sequence=True,
         )
         async def guarded_visual_click(  # type: ignore[no-untyped-def]
@@ -625,7 +604,7 @@ class LocalBrowserUsePriceRuntime:
             except RuntimeError:
                 self._price_state.terminal = PriceExecutionStatus.BUDGET_EXHAUSTED
                 return ActionResult(is_done=True, success=False, error="Action limit reached")
-            coordinate_x, coordinate_y = _viewport_coordinates(
+            coordinate_x, coordinate_y = viewport_coordinates(
                 browser_session,
                 coordinate_x=params.coordinate_x,
                 coordinate_y=params.coordinate_y,
@@ -634,17 +613,17 @@ class LocalBrowserUsePriceRuntime:
                 0 <= coordinate_x < int(viewport["width"])
                 and 0 <= coordinate_y < int(viewport["height"])
             ):
-                return _continued_action_result(
+                return continued_action_result(
                     ActionResult,
                     "BookSaver rejected coordinates outside the visible screenshot viewport",
                 )
             current_url = await browser_session.get_current_page_url()
-            chain = await _coordinate_hit_test_chain(
+            chain = await coordinate_hit_test_chain(
                 browser_session,
                 coordinate_x=coordinate_x,
                 coordinate_y=coordinate_y,
             )
-            decision = _coordinate_chain_click_decision(
+            decision = coordinate_chain_click_decision(
                 self._guard,
                 chain=chain,
                 current_url=current_url,
@@ -656,7 +635,7 @@ class LocalBrowserUsePriceRuntime:
                     decision.reason,
                     decision.depth,
                 )
-                return _continued_action_result(
+                return continued_action_result(
                     ActionResult,
                     "BookSaver rejected this screenshot point before execution; choose the center "
                     "of a visible read-only property, room, rate, or disclosure control",
@@ -677,7 +656,7 @@ class LocalBrowserUsePriceRuntime:
         @tools.action(  # type: ignore[untyped-decorator]
             "Scroll one viewport up or down on the current Booking.com price page.",
             param_model=GuardedScroll,
-            allowed_domains=_ALLOWED_DOMAINS,
+            allowed_domains=ALLOWED_DOMAINS,
         )
         async def guarded_scroll(  # type: ignore[no-untyped-def]
             params: GuardedScroll, browser_session
@@ -701,7 +680,7 @@ class LocalBrowserUsePriceRuntime:
         @tools.action(  # type: ignore[untyped-decorator]
             "Press one BookSaver-approved navigation key.",
             param_model=GuardedKey,
-            allowed_domains=_ALLOWED_DOMAINS,
+            allowed_domains=ALLOWED_DOMAINS,
         )
         async def guarded_key(  # type: ignore[no-untyped-def]
             params: GuardedKey, browser_session
@@ -723,7 +702,7 @@ class LocalBrowserUsePriceRuntime:
         @tools.action(  # type: ignore[untyped-decorator]
             "Replace one visible Booking.com search field with an exact trusted query value.",
             param_model=GuardedTrustedType,
-            allowed_domains=_ALLOWED_DOMAINS,
+            allowed_domains=ALLOWED_DOMAINS,
             terminates_sequence=True,
         )
         async def guarded_type(  # type: ignore[no-untyped-def]
@@ -766,7 +745,7 @@ class LocalBrowserUsePriceRuntime:
         @tools.action(  # type: ignore[untyped-decorator]
             "Wait briefly for the current Booking.com price page without navigating.",
             param_model=GuardedWait,
-            allowed_domains=_ALLOWED_DOMAINS,
+            allowed_domains=ALLOWED_DOMAINS,
         )
         async def guarded_wait(  # type: ignore[no-untyped-def]
             params: GuardedWait, browser_session
@@ -789,7 +768,7 @@ class LocalBrowserUsePriceRuntime:
 
         @tools.action(  # type: ignore[untyped-decorator]
             "Return once to the previous Booking.com page after read-only inspection.",
-            allowed_domains=_ALLOWED_DOMAINS,
+            allowed_domains=ALLOWED_DOMAINS,
             terminates_sequence=True,
         )
         async def guarded_back(browser_session) -> Any:  # type: ignore[no-untyped-def]
@@ -810,7 +789,7 @@ class LocalBrowserUsePriceRuntime:
         @tools.action(  # type: ignore[untyped-decorator]
             "Submit one complete visible query with every visible current room/rate offer.",
             param_model=BrowserUsePriceObservationSubmission,
-            allowed_domains=_ALLOWED_DOMAINS,
+            allowed_domains=ALLOWED_DOMAINS,
             terminates_sequence=True,
         )
         async def submit_price_observation(  # type: ignore[no-untyped-def]
@@ -819,7 +798,7 @@ class LocalBrowserUsePriceRuntime:
             if not await before_action(browser_session):
                 return await stop_unsafe(non_allowlisted=True)
             if params.completeness != EvidenceCompleteness.COMPLETE.value:
-                return _continued_action_result(
+                return continued_action_result(
                     ActionResult,
                     "Submit only after the visible query evidence is complete",
                 )
@@ -841,7 +820,7 @@ class LocalBrowserUsePriceRuntime:
                     if isinstance(exc, ValueError)
                     else "type",
                 )
-                return _continued_action_result(
+                return continued_action_result(
                     ActionResult,
                     "Typed evidence was invalid; re-inspect and submit exact visible values",
                 )
@@ -866,14 +845,14 @@ class LocalBrowserUsePriceRuntime:
             if not await before_action(browser_session):
                 return await stop_unsafe(non_allowlisted=True)
             if params.success:
-                return _continued_action_result(
+                return continued_action_result(
                     ActionResult,
                     "Use submit_price_observation for success; done is only for closed failure",
                 )
             try:
                 self._price_state.terminal = _terminal_status(params.status)
             except ValueError:
-                return _continued_action_result(
+                return continued_action_result(
                     ActionResult,
                     "Choose one supported closed non-success status",
                 )
@@ -883,75 +862,34 @@ class LocalBrowserUsePriceRuntime:
                 extracted_content="Typed terminal submitted",
             )
 
-        model_cls = _model_type(ChatAnthropic, _PROMPT_VERSION)
+        model_cls = budgeted_model_type(ChatAnthropic, _PROMPT_VERSION)
         model = model_cls(api_key=api_key, budget=budget, meter=meter)
 
         agent_run_id = f"booksaver-price-{uuid.uuid4().hex}"
-        self._host._agent_run_id = agent_run_id
-        self._failure_stage = "agent_construction"
-        agent: Any = Agent(
+        agent = self._host.create_agent(
+            Agent,
             task=_price_agent_task(request),
             task_id=agent_run_id,
             llm=model,
             browser_session=session,
             tools=tools,
-            use_vision=True,
-            llm_screenshot_size=(int(viewport["width"]), int(viewport["height"])),
-            use_thinking=False,
-            max_actions_per_step=1,
-            max_failures=3,
-            use_judge=False,
-            calculate_cost=False,
-            directly_open_url=False,
-            generate_gif=False,
-            save_conversation_path=None,
-            message_compaction=False,
-            final_response_after_failure=False,
-            llm_timeout=45,
-            step_timeout=max(
-                1,
-                min(60, int((request.limits.deadline - datetime.now(UTC)).total_seconds())),
-            ),
-            initial_actions=None,
-            available_file_paths=None,
-            sensitive_data=None,
-            fallback_llm=None,
-            page_extraction_llm=None,
-            judge_llm=None,
-            skills=[],
-            skill_ids=[],
-            file_system_path=str(file_system_dir),
-            include_recent_events=False,
-            enable_planning=False,
+            viewport=viewport,
+            file_system_dir=file_system_dir,
+            deadline=request.limits.deadline,
             # The required inventory phase immediately before price execution already performs
             # code-owned session verification and refresh. Repeating that optional 35-second
             # probe here can consume the shared deadline after valid price evidence is submitted.
             register_done_callback=None,
         )
-        self._host._agent = agent
-        self._host._agent_directory = Path(agent.agent_directory)
-        expected_prefix = f"browser_use_agent_{agent_run_id}_"
-        if (
-            self._host._agent_directory.parent.resolve()
-            != Path(tempfile.gettempdir()).resolve()
-            or not self._host._agent_directory.name.startswith(expected_prefix)
-        ):
-            raise RuntimeError("Browser Use agent directory escaped the owned temp namespace")
-        from booksaver.infrastructure.browser.browser_use_inventory_executor import (
-            _InMemoryScreenshotService,
-        )
-
-        self._host._screenshots = _InMemoryScreenshotService()
-        cast(Any, agent).screenshot_service = self._host._screenshots
         actions = frozenset(tools.registry.registry.actions)
         if actions != _EXPECTED_ACTIONS:
             raise RuntimeError("Browser Use price action registry differs from the allowlist")
 
-        self._failure_stage = "agent_execution"
+        self._host.failure_stage = "agent_execution"
         remaining_steps = max(1, request.limits.max_actions - meter.snapshot().total_actions)
         try:
             history = await agent.run(max_steps=remaining_steps)
-            diagnostic = _agent_history_diagnostic(history)
+            diagnostic = agent_history_diagnostic(history, _EXPECTED_ACTIONS)
             if self._price_state.observation is None:
                 logger.warning(
                     "Browser Use price agent ended without observation execution_id=%s steps=%s "
@@ -967,7 +905,7 @@ class LocalBrowserUsePriceRuntime:
         except BrowserUseCostStop:
             pass
 
-        if self._host._state.dialog_rejected:
+        if self._host.dialog_rejected:
             return self._unsafe_result()
         if self._price_state.terminal is not None:
             return BrowserUsePriceRuntimeResult(
@@ -1078,7 +1016,7 @@ class BrowserUsePriceBrowserExecutor:
                 )
             except Exception as exc:
                 raise BrowserUseRuntimeFailure(
-                    stage=str(getattr(runtime, "_failure_stage", "runtime_execute")),
+                    stage=str(getattr(runtime, "failure_stage", "runtime_execute")),
                     cause_type=type(exc).__name__,
                 ) from None
             if result.status is not PriceExecutionStatus.OBSERVED:

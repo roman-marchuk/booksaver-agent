@@ -5,12 +5,12 @@
 ## Validation
 
 - [ ] Targeted tests for the changed behavior
-- [ ] Full relevant repository quality gate
-- [ ] AI-DLC artifact and status validation when applicable
+- [ ] Ruff, mypy, pytest, and `npm run test:aidlc-validator`
+- [ ] `npm run validate:aidlc` (canonical artifact and status validation)
 
 ## Review and merge gate
 
-- [ ] Cursor Bugbot reviewed the final proposed head commit (review object or successful check)
+- [ ] Successful current-head `Cursor Bugbot` check for the final proposed commit
 - [ ] Every Cursor review thread has a tested fix or evidence-backed disposition and is resolved
 - [ ] `python3 scripts/bugbot_merge_gate.py PR_NUMBER` passes for the final head
 

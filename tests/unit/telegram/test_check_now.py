@@ -35,7 +35,6 @@ from booksaver.domain.value_objects import (
     StayDates,
 )
 from booksaver.infrastructure.persistence.sqlite_store import (
-    SqliteBookingRepository,
     SqliteStore,
     SqliteUserRepository,
 )
@@ -46,6 +45,7 @@ from booksaver.infrastructure.telegram.router import (
     IncomingCallback,
     IncomingCommand,
 )
+from tests.support.bookings import seed_booking
 
 
 class FakeClient:
@@ -115,7 +115,7 @@ def _add_user_booking(db_path: Path, telegram_id: int, booking: Booking) -> None
         user = SqliteUserRepository(store).get_or_create_by_telegram_id(
             telegram_id, UserRole.USER
         )
-        SqliteBookingRepository(store).add(booking, user_id=user.user_id)
+        seed_booking(store, booking, user_id=user.user_id)
 
 
 def _price_source(genius: GeniusEvidence) -> PriceSourceProvenance:

@@ -18,12 +18,9 @@ DeleteMessage = Callable[[int, int], object]
 class KeyIntakeFlow:
     """Single-step, per-chat `/setkey` intake (US-027).
 
-    Deliberately not built on the generic `DialogManager`/`DialogDefinition`
-    framework: that framework's `on_complete` hook doesn't receive the raw
-    Telegram `message_id`, which this flow needs to delete the chat message
-    containing the pasted key (redaction requirement). A dedicated tiny
-    per-chat pending-set is simpler than threading `message_id` through the
-    shared dialog machinery for one caller.
+    The flow owns the raw Telegram `message_id` so it can delete the chat
+    message containing the pasted key. A small per-chat pending set is enough
+    for this single-step interaction.
     """
 
     def __init__(

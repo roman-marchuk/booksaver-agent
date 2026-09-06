@@ -57,7 +57,7 @@ class AnthropicLLMClientFactory:
     ) -> None:
         self._cfg = cfg
         # Explicit api_key (mainly for tests); default resolves the owner's
-        # env var, matching the pre-v7 _make_llm_extractor/_make_agent_brain.
+        # deployment environment key.
         self._owner_api_key = (
             api_key if api_key is not None else os.environ.get("BOOKSAVER_LLM_API_KEY")
         )
@@ -253,13 +253,6 @@ class AnthropicLLMClientFactory:
             budget=budget,
         )
 
-    def bind_for_booking(self, booking: Booking) -> CallerBoundAnthropicFactory | None:
-        if self._user_repo is None:
-            return None
-        owner = self._resolve_owner(booking)
-        if owner is None or not owner.is_active:
-            return None
-        return self.bind_for_user(owner.user_id)
 
 
 class CallerBoundAnthropicFactory:

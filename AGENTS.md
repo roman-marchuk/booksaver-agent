@@ -7,22 +7,26 @@ Booking.com hotel reservations, detects cheaper equivalent offers through script
 automation with bounded LLM assistance, and reports savings while users manage reservations directly
 in Booking.com.
 
-The implemented scope is 119 in-scope stories across intents 001-020, 37 completed bolts, schema
-v12, 29 ADRs, and 1038 tests. Two assigned extensibility stories remain explicitly post-MVP. See
-`memory-bank/story-index.md` for status and `memory-bank/standards/decision-index.md` for decisions.
+Current scope and delivery status are recorded in `memory-bank/story-index.md`; accepted decisions
+are indexed in `memory-bank/standards/decision-index.md`. Historical completed work may be
+superseded by later decisions.
 
 ## Commands
 
 ```bash
 pip install -e ".[dev]"
 playwright install chromium
+npm ci
 python3 -m ruff check src tests
 python3 -m mypy src
 python3 -m pytest
+npm run test:aidlc-validator
+npm run validate:aidlc
 python3 -m booksaver.cli --help
 ```
 
-Python 3.11+ is required. Runtime dependencies are Playwright, Anthropic, and cryptography.
+Python 3.11+ is required. Runtime dependencies are declared in `pyproject.toml`, pinned for
+production in `requirements.lock`, and explained in `memory-bank/standards/tech-stack.md`.
 
 ## Non-negotiable boundaries
 

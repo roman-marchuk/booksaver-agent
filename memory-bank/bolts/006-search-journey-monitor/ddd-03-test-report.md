@@ -3,7 +3,14 @@ unit: 001-search-journey-monitor
 bolt: 006-search-journey-monitor
 stage: test
 status: complete
-updated: 2026-07-06T00:05:00Z
+updated: null
+timestamp_provenance:
+  - field: "updated"
+    state: "unknown"
+    original_value: "2026-07-06T00:05:00Z"
+    evidence_commit: "6ff4afea49088ae25084541e87185ad374ff0e4a"
+    evidence_committed_at: "2026-07-05T23:26:19Z"
+    reason: "Original timestamp is later than the commit that recorded it and conflicts with bolt completion; exact historical execution or authoring time is unknown."
 ---
 
 # Test Report — Search Journey Monitor
@@ -74,3 +81,10 @@ verified by feeding monitor output directly into `detect_savings` in tests.
   drift lands on named-step failures and is bolt 007's escalation trigger.
 - `PlaywrightInteractiveBrowser` is exercised only via its port contract (real browser
   runs happen in operations verification, as with bolt 003's adapter).
+
+## Historical timestamp correction (Intent 024)
+
+Unreliable chronology fields are explicitly unknown. Their original values and Git recording
+evidence remain in frontmatter. Commit timestamps establish when the metadata was recorded,
+not when tests or design work ran. Completion status and historical test claims are unchanged;
+this correction does not independently verify those claims.

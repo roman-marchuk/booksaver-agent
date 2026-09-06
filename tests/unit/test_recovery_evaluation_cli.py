@@ -17,6 +17,7 @@ from booksaver.domain.model_policy import (
 from booksaver.evaluation import (
     PACKAGED_QUALIFICATION_VERSION,
     approved_recovery_profiles,
+    curated_fixture_directory,
 )
 from booksaver.infrastructure.persistence.model_policy import (
     SqliteQualificationRepository,
@@ -105,12 +106,7 @@ def test_recovery_evaluation_rejects_plan_over_250_calls(
 def test_recovery_evaluation_reports_provider_token_usage(
     monkeypatch, capsys
 ) -> None:
-    fixture = (
-        Path(__file__).parent.parent
-        / "fixtures"
-        / "browser_recovery"
-        / "unsupported-layout.json"
-    )
+    fixture = curated_fixture_directory() / "unsupported-layout.json"
     aggregate = SimpleNamespace(
         fixture_id="unsupported-layout",
         runs=10,

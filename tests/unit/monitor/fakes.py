@@ -4,7 +4,7 @@ import re
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
-from booksaver.application.ports import ExtractionResult, PageContent, PageSnapshot
+from booksaver.application.ports import ExtractionResult, PageSnapshot
 from booksaver.domain.agent import (
     AgentAction,
     AgentActionType,
@@ -21,7 +21,6 @@ from booksaver.domain.browser_resilience import (
 from booksaver.domain.check_result import CheckResult
 from booksaver.domain.models import Booking
 from booksaver.domain.offer import OfferCandidate
-from booksaver.domain.session import SessionState
 from booksaver.domain.value_objects import (
     ConfirmationId,
     Money,
@@ -60,36 +59,11 @@ class FakeBookingRepository:
         self.bookings = bookings or []
         self.owners: dict[str, int] = {}
 
-    def add(self, booking: Booking, user_id: int | None = None) -> None:
-        self.bookings.append(booking)
-        self.owners[booking.booking_id] = user_id if user_id is not None else 1
-
     def get_by_id(self, booking_id: str) -> Booking | None:
         return next((b for b in self.bookings if b.booking_id == booking_id), None)
 
-    def get_by_confirmation(self, confirmation_id: ConfirmationId) -> Booking | None:
-        return next(
-            (b for b in self.bookings if b.confirmation_id == confirmation_id), None
-        )
-
-    def list_active(self) -> list[Booking]:
-        return [b for b in self.bookings if b.status.value == "active"]
-
-    def list_active_for_user(self, user_id: int) -> list[Booking]:
-        return [
-            b
-            for b in self.bookings
-            if b.status.value == "active" and self.owners.get(b.booking_id, 1) == user_id
-        ]
-
-    def list_all_for_user(self, user_id: int) -> list[Booking]:
-        return [b for b in self.bookings if self.owners.get(b.booking_id, 1) == user_id]
-
     def get_owner_user_id(self, booking_id: str) -> int | None:
         return self.owners.get(booking_id)
-
-    def exists(self, confirmation_id: ConfirmationId) -> bool:
-        return self.get_by_confirmation(confirmation_id) is not None
 
 
 class FakeCheckHistoryRepository:
@@ -111,48 +85,6 @@ class FakeCheckHistoryRepository:
                 break
             count += 1
         return count
-
-
-class FakeSessionRepository:
-    def __init__(self, session: SessionState | None = None) -> None:
-        self.session = session
-        self.saved: list[SessionState] = []
-
-    def load(self, platform: Platform) -> SessionState | None:
-        return self.session
-
-    def save(self, session: SessionState) -> None:
-        self.session = session
-        self.saved.append(session)
-
-
-class FakeBrowserSession:
-    def __init__(
-        self,
-        page_text: str = "",
-        authenticated: bool = True,
-        fail_navigation: bool = False,
-    ) -> None:
-        self.page_text = page_text
-        self.authenticated = authenticated
-        self.fail_navigation = fail_navigation
-        self.opened_urls: list[str] = []
-        self.restored_cookies: list[bytes] = []
-
-    def open_page(self, url: str) -> PageContent:
-        self.opened_urls.append(url)
-        if self.fail_navigation:
-            raise TimeoutError(f"Navigation to {url} timed out")
-        return PageContent(url=url, html=f"<body>{self.page_text}</body>", text=self.page_text)
-
-    def get_cookies(self) -> bytes:
-        return b'[{"name": "fresh"}]'
-
-    def restore_cookies(self, data: bytes) -> None:
-        self.restored_cookies.append(data)
-
-    def is_authenticated(self) -> bool:
-        return self.authenticated
 
 
 class FakeLLMExtractor:
@@ -452,14 +384,6 @@ class FakeInteractiveBrowser:
 
     def is_authenticated(self) -> bool:
         return self.authenticated
-
-
-def make_session(cookies: bytes = b"[]") -> SessionState:
-    return SessionState.new(
-        platform=Platform.BOOKING_COM,
-        cookies=cookies,
-        authenticated_at=datetime.now(UTC),
-    )
 
 
 class FakeAgentBrain:

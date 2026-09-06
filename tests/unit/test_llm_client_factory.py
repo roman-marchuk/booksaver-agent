@@ -1,11 +1,11 @@
-"""US-029: LLMClientFactory seam — behavior must match pre-v7 owner-key
-resolution exactly; the factory just adds the (currently unused) `booking`
-parameter so a later slice can resolve per-user keys without a call-site
-change.
-"""
+"""Caller-scoped LLM construction, key isolation and adaptive capability contracts."""
 
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
+
+import pytest
 
 from booksaver.domain.model_policy import (
     AdaptiveModelPortfolio,
@@ -25,38 +25,6 @@ def _config() -> Config:
         notification_settings=NotificationSettings(),
         loaded_at=datetime.now(UTC),
     )
-
-
-class TestLLMClientFactory:
-    def test_for_booking_returns_none_without_api_key(self):
-        factory = AnthropicLLMClientFactory(_config(), api_key=None)
-        assert factory.for_booking(None) is None
-
-    def test_agent_brain_for_booking_returns_none_without_api_key(self):
-        factory = AnthropicLLMClientFactory(_config(), api_key=None)
-        assert factory.agent_brain_for_booking(None) is None
-
-    def test_for_booking_builds_extractor_with_configured_model(self):
-        factory = AnthropicLLMClientFactory(_config(), api_key="sk-test-key")
-        extractor = factory.for_booking(None)
-        assert extractor is not None
-
-    def test_agent_brain_for_booking_builds_brain_with_configured_model(self):
-        factory = AnthropicLLMClientFactory(_config(), api_key="sk-test-key")
-        brain = factory.agent_brain_for_booking(None)
-        assert brain is not None
-
-    def test_booking_argument_does_not_change_resolution_without_user_repo(self):
-        """Without a user_repo/key_store (pre-US-027 callers), resolution is
-        identical whether a booking is passed or not — the owner key is
-        always used.
-        """
-        from .monitor.fakes import make_booking
-
-        factory = AnthropicLLMClientFactory(_config(), api_key="sk-test-key")
-        without_booking = factory.for_booking(None)
-        with_booking = factory.for_booking(make_booking())
-        assert type(without_booking) is type(with_booking)
 
 
 class _FakeUserRepo:
@@ -101,30 +69,54 @@ def _user(encrypted_key: bytes | None, *, active: bool = True):
     )
 
 
+@pytest.mark.parametrize(
+    "method, adapter",
+    [("for_booking", "AnthropicExtractor"), ("agent_brain_for_booking", "AnthropicAgentBrain")],
+)
+@pytest.mark.parametrize(
+    "owner_key, personal_key, scoped, expected_key",
+    [
+        ("owner-key", None, True, "owner-key"),
+        ("owner-key", "personal-key", True, "personal-key"),
+        (None, "personal-key", True, "personal-key"),
+        (None, None, True, None),
+        ("owner-key", None, False, "owner-key"),
+    ],
+    ids=["owner", "personal-preferred", "personal-only", "unfunded", "owner-without-repository"],
+)
+def test_booking_adapter_receives_exact_key_and_model(
+    monkeypatch, method, adapter, owner_key, personal_key, scoped, expected_key
+):
+    from booksaver.infrastructure.llm import anthropic_adapter
+
+    from .monitor.fakes import make_booking
+
+    monkeypatch.delenv("BOOKSAVER_LLM_API_KEY", raising=False)
+    created = SimpleNamespace(role="navigation_agent")
+    constructor = Mock(return_value=created)
+    monkeypatch.setattr(anthropic_adapter, adapter, constructor)
+    keys = _FakeKeyStore(plaintext=personal_key)
+    users = _FakeUserRepo(_user(b"encrypted-personal" if personal_key else None))
+    config = _config()
+    factory = AnthropicLLMClientFactory(
+        config, api_key=owner_key, user_repo=users if scoped else None, key_store=keys
+    )
+
+    result = getattr(factory, method)(make_booking())
+
+    if expected_key is None:
+        assert result is None
+        constructor.assert_not_called()
+    else:
+        assert result is created
+        constructor.assert_called_once_with(
+            api_key=expected_key, model=config.agent_settings.primary_model
+        )
+    assert keys.decrypt_calls == int(scoped and personal_key is not None)
+
+
 class TestHybridBilling:
     """US-027: booking -> owning user -> personal key, else owner key."""
-
-    def test_falls_back_to_owner_key_when_user_has_no_personal_key(self):
-        from .monitor.fakes import make_booking
-
-        factory = AnthropicLLMClientFactory(
-            _config(),
-            api_key="sk-owner-key",
-            user_repo=_FakeUserRepo(_user(encrypted_key=None)),
-            key_store=_FakeKeyStore(),
-        )
-        assert factory.for_booking(make_booking()) is not None
-
-    def test_uses_personal_key_when_set(self):
-        from .monitor.fakes import make_booking
-
-        factory = AnthropicLLMClientFactory(
-            _config(),
-            api_key=None,  # no owner key at all — only the personal key works
-            user_repo=_FakeUserRepo(_user(encrypted_key=b"ciphertext")),
-            key_store=_FakeKeyStore(plaintext="sk-personal-key"),
-        )
-        assert factory.for_booking(make_booking()) is not None
 
     def test_invalid_personal_key_raises_user_key_invalid_error(self):
         import pytest
@@ -159,23 +151,6 @@ class TestHybridBilling:
 
         with pytest.raises(UserKeyInvalidError, match="key store is unavailable"):
             factory.for_booking(make_booking())
-
-    def test_agent_brain_also_uses_personal_key(self):
-        from .monitor.fakes import make_booking
-
-        factory = AnthropicLLMClientFactory(
-            _config(),
-            api_key=None,
-            user_repo=_FakeUserRepo(_user(encrypted_key=b"ciphertext")),
-            key_store=_FakeKeyStore(plaintext="sk-personal-key"),
-        )
-        assert factory.agent_brain_for_booking(make_booking()) is not None
-
-    def test_no_user_repo_behaves_like_pre_us027(self):
-        from .monitor.fakes import make_booking
-
-        factory = AnthropicLLMClientFactory(_config(), api_key="sk-owner-key")
-        assert factory.for_booking(make_booking()) is not None
 
 
 class TestExplicitUserRoleResolution:

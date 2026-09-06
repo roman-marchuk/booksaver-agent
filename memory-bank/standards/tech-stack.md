@@ -6,8 +6,8 @@ BookSaver Agent is a local-first Python daemon / CLI-style tool. It is not a hos
 
 ## Current State
 
-The implemented scope spans intents 001–019 and bolts 001–036. The stack below is decided and in
-use; each choice is recorded in `standards/decision-index.md`.
+The story index records delivery and qualification status. The stack below follows accepted
+decisions indexed in `standards/decision-index.md`.
 
 ## Runtime Stack (decided)
 

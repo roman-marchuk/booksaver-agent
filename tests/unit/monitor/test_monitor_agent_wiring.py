@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from booksaver.domain.agent import (
     AgentAction,
     AgentActionType,
@@ -11,19 +13,18 @@ from booksaver.domain.agent import (
     TraceKind,
 )
 from booksaver.domain.check_result import CheckOutcome, ExtractionMethod, FailureCode
+from booksaver.domain.models import Booking
+from booksaver.domain.user_session import UserSessionMetadata, UserSessionSnapshot
+from booksaver.domain.value_objects import Platform
 from booksaver.monitor.failure_tracker import FailureTracker
 from booksaver.monitor.search_check_job import BookingComSearchMonitor
-from booksaver.monitor.session_manager import SessionManager
 from booksaver.monitor.trace import SnapshotWriter
 
 from .fakes import (
     FakeAgentBrain,
-    FakeBookingRepository,
     FakeCheckHistoryRepository,
     FakeInteractiveBrowser,
-    FakeSessionRepository,
     make_booking,
-    make_session,
 )
 
 _PROPERTY_URL = (
@@ -62,9 +63,7 @@ def _monitor(
     history = FakeCheckHistoryRepository()
     return BookingComSearchMonitor(
         browser=browser,
-        session_manager=SessionManager(FakeSessionRepository(make_session())),
         check_history=history,
-        booking_repo=FakeBookingRepository([]),
         failure_tracker=FailureTracker(history),
         llm=None,
         brain=brain,
@@ -72,6 +71,19 @@ def _monitor(
         trace_repo=trace_repo,
         snapshot_writer=snapshot_writer,
     )
+
+
+def _run_authenticated(monitor: BookingComSearchMonitor, booking: Booking):
+    snapshot = UserSessionSnapshot(
+        metadata=UserSessionMetadata.imported(
+            owner_user_id=7,
+            platform=Platform.BOOKING_COM,
+            imported_at=datetime.now(UTC),
+            expires_at=None,
+        ),
+        cookies=b'[{"name":"session"}]',
+    )
+    return monitor.run_authenticated(booking, snapshot)
 
 
 class TestAgentAssistedMarker:
@@ -86,20 +98,20 @@ class TestAgentAssistedMarker:
         browser.on_act = _fix
         brain = FakeAgentBrain([AgentAction(type=AgentActionType.CLICK, ref="e0")])
         monitor = _monitor(browser, brain=brain)
-        result = monitor.run_check(make_booking())
+        result = _run_authenticated(monitor, make_booking())
         assert result.outcome is CheckOutcome.SUCCESS
         assert result.extraction_method is ExtractionMethod.AGENT
 
     def test_scripted_only_success_keeps_dom_method(self):
         monitor = _monitor(_happy_browser(), brain=FakeAgentBrain([]))
-        result = monitor.run_check(make_booking())
+        result = _run_authenticated(monitor, make_booking())
         assert result.extraction_method is ExtractionMethod.DOM
 
     def test_without_brain_step_failures_stay_scripted_codes(self):
         browser = _happy_browser()
         browser.fail_selectors = {"property-card"}
         monitor = _monitor(browser, brain=None)
-        result = monitor.run_check(make_booking())
+        result = _run_authenticated(monitor, make_booking())
         assert result.failure_reason.code is FailureCode.DOM_AMBIGUITY
 
 
@@ -107,7 +119,7 @@ class TestTracePersistence:
     def test_every_check_persists_a_trace(self):
         trace_repo = FakeCheckTraceRepository()
         monitor = _monitor(_happy_browser(), trace_repo=trace_repo)
-        result = monitor.run_check(make_booking())
+        result = _run_authenticated(monitor, make_booking())
         [trace] = trace_repo.traces
         assert trace.check_id == result.check_id
         kinds = [e.kind for e in trace.events]
@@ -129,7 +141,7 @@ class TestTracePersistence:
             brain=FakeAgentBrain([AgentAction(type=AgentActionType.CLICK, ref="e0")]),
             trace_repo=trace_repo,
         )
-        monitor.run_check(make_booking())
+        _run_authenticated(monitor, make_booking())
         kinds = {e.kind for e in trace_repo.traces[0].events}
         assert TraceKind.ESCALATION_STARTED in kinds
         assert TraceKind.AGENT_ACTION in kinds
@@ -138,7 +150,7 @@ class TestTracePersistence:
     def test_occupancy_missing_check_still_traced(self):
         trace_repo = FakeCheckTraceRepository()
         monitor = _monitor(_happy_browser(), trace_repo=trace_repo)
-        monitor.run_check(make_booking(occupancy=None))
+        _run_authenticated(monitor, make_booking(occupancy=None))
         [trace] = trace_repo.traces
         assert "occupancy_missing" in trace.events[-1].detail
 
@@ -149,13 +161,13 @@ class TestFailureSnapshots:
         browser.titles = ["Wrong Hotel"]  # ambiguous changed result structure
         writer = SnapshotWriter(tmp_path / "snapshots")
         monitor = _monitor(browser, snapshot_writer=writer)
-        result = monitor.run_check(make_booking())
+        result = _run_authenticated(monitor, make_booking())
         assert result.outcome is CheckOutcome.FAILURE
         assert (tmp_path / "snapshots" / f"{result.check_id}.txt").exists()
 
     def test_successful_check_writes_no_snapshot(self, tmp_path):
         writer = SnapshotWriter(tmp_path / "snapshots")
         monitor = _monitor(_happy_browser(), snapshot_writer=writer)
-        result = monitor.run_check(make_booking())
+        result = _run_authenticated(monitor, make_booking())
         assert result.outcome is CheckOutcome.SUCCESS
         assert not (tmp_path / "snapshots").exists()

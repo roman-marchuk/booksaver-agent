@@ -22,7 +22,7 @@ from booksaver.infrastructure.persistence.sqlite_store import (
     SqliteStore,
 )
 
-from .test_check_history import _register_booking
+from .test_check_history import _seed_booking_projection
 
 
 def _opportunity(booking_id: str = "b-1") -> SavingsOpportunity:
@@ -95,7 +95,7 @@ def _add_checked_opportunity(
 class TestSqliteSavingsRepository:
     def test_round_trip(self, tmp_path: Path) -> None:
         with SqliteStore(tmp_path / "t.db") as store:
-            _register_booking(store)
+            _seed_booking_projection(store)
             repo = SqliteSavingsRepository(store)
             original = _opportunity()
             repo.add(original)
@@ -111,7 +111,7 @@ class TestSqliteSavingsRepository:
 
     def test_mark_notified(self, tmp_path: Path) -> None:
         with SqliteStore(tmp_path / "t.db") as store:
-            _register_booking(store)
+            _seed_booking_projection(store)
             repo = SqliteSavingsRepository(store)
             opportunity = _opportunity()
             repo.add(opportunity)
@@ -125,8 +125,8 @@ class TestSqliteSavingsRepository:
 
     def test_list_for_booking_and_all(self, tmp_path: Path) -> None:
         with SqliteStore(tmp_path / "t.db") as store:
-            _register_booking(store, "b-1")
-            _register_booking(store, "b-2")
+            _seed_booking_projection(store, "b-1")
+            _seed_booking_projection(store, "b-2")
             repo = SqliteSavingsRepository(store)
             repo.add(_opportunity("b-1"))
             repo.add(_opportunity("b-1"))
@@ -141,8 +141,8 @@ class TestSqliteSavingsRepository:
     ) -> None:
         now = datetime.now(UTC)
         with SqliteStore(tmp_path / "t.db") as store:
-            _register_booking(store, "b-1")
-            _register_booking(store, "b-2")
+            _seed_booking_projection(store, "b-1")
+            _seed_booking_projection(store, "b-2")
             repo = SqliteSavingsRepository(store)
             old_b1 = replace(
                 _opportunity("b-1"),
@@ -188,7 +188,7 @@ class TestSqliteSavingsRepository:
     ) -> None:
         now = datetime.now(UTC)
         with SqliteStore(tmp_path / "t.db") as store:
-            _register_booking(store)
+            _seed_booking_projection(store)
             repo = SqliteSavingsRepository(store)
             first = replace(
                 _opportunity(),
@@ -217,7 +217,7 @@ class TestSqliteSavingsRepository:
     ) -> None:
         now = datetime.now(UTC)
         with SqliteStore(tmp_path / "t.db") as store:
-            _register_booking(store)
+            _seed_booking_projection(store)
             repo = SqliteSavingsRepository(store)
             opportunity = replace(
                 _opportunity(),
@@ -243,7 +243,7 @@ class TestSqliteSavingsRepository:
     ) -> None:
         now = datetime.now(UTC)
         with SqliteStore(tmp_path / "t.db") as store:
-            _register_booking(store)
+            _seed_booking_projection(store)
             repo = SqliteSavingsRepository(store)
             larger = replace(
                 _opportunity(),
@@ -275,7 +275,7 @@ class TestSqliteSavingsRepository:
     ) -> None:
         now = datetime.now(UTC)
         with SqliteStore(tmp_path / "t.db") as store:
-            _register_booking(store)
+            _seed_booking_projection(store)
             repo = SqliteSavingsRepository(store)
             opportunity = replace(
                 _opportunity(),
@@ -301,7 +301,7 @@ class TestSqliteSavingsRepository:
     ) -> None:
         now = datetime.now(UTC)
         with SqliteStore(tmp_path / "t.db") as store:
-            _register_booking(store)
+            _seed_booking_projection(store)
             repo = SqliteSavingsRepository(store)
             opportunity = replace(
                 _opportunity(),
@@ -334,7 +334,7 @@ class TestSqliteSavingsRepository:
     ) -> None:
         now = datetime.now(UTC)
         with SqliteStore(tmp_path / "t.db") as store:
-            _register_booking(store)
+            _seed_booking_projection(store)
             repo = SqliteSavingsRepository(store)
             old = replace(
                 _opportunity(),
@@ -366,8 +366,8 @@ class TestSqliteSavingsRepository:
     ) -> None:
         now = datetime.now(UTC)
         with SqliteStore(tmp_path / "t.db") as store:
-            _register_booking(store, "b-1")
-            _register_booking(store, "b-2")
+            _seed_booking_projection(store, "b-1")
+            _seed_booking_projection(store, "b-2")
             repo = SqliteSavingsRepository(store)
             first = replace(
                 _opportunity("b-1"),
@@ -400,7 +400,7 @@ class TestSqliteSavingsRepository:
     ) -> None:
         now = datetime.now(UTC)
         with SqliteStore(tmp_path / "t.db") as store:
-            _register_booking(store)
+            _seed_booking_projection(store)
             repo = SqliteSavingsRepository(store)
             old = replace(
                 _opportunity(),
@@ -432,7 +432,7 @@ class TestSqliteSavingsRepository:
         self, tmp_path: Path
     ) -> None:
         with SqliteStore(tmp_path / "t.db") as store:
-            _register_booking(store)
+            _seed_booking_projection(store)
             repo = SqliteSavingsRepository(store)
             orphan = replace(_opportunity(), opportunity_id="orphan")
             repo.add(orphan)

@@ -152,7 +152,7 @@ function extractFrontmatter(content) {
     if (!match) return null;
 
     try {
-        return yaml.load(match[1]);
+        return yaml.load(match[1], { schema: yaml.JSON_SCHEMA });
     } catch (error) {
         console.error(`${colors.red}Error parsing YAML frontmatter:${colors.reset}`, error.message);
         return null;
@@ -390,7 +390,7 @@ async function updateUnitStatus(bolt) {
         if (await fs.pathExists(boltPath)) {
             const content = await fs.readFile(boltPath, 'utf8');
             const frontmatter = extractFrontmatter(content);
-            if (frontmatter && frontmatter.unit === unit) {
+            if (frontmatter && frontmatter.intent === intent && frontmatter.unit === unit) {
                 unitBolts.push({
                     id: frontmatter.id || boltDir,
                     status: frontmatter.status
@@ -589,8 +589,15 @@ async function boltMarkComplete(boltId, lastStage) {
 }
 
 // CLI entry point
-const boltId = process.argv[2];
-const lastStage = process.argv['--last-stage'] || null;
+const args = process.argv.slice(2);
+const boltId = args[0];
+const lastStageIndex = args.indexOf('--last-stage');
+const lastStage = lastStageIndex >= 0 ? args[lastStageIndex + 1] : null;
+
+if (lastStageIndex >= 0 && (!lastStage || lastStage.startsWith('--'))) {
+    console.error(`${colors.red}Error:${colors.reset} --last-stage requires a stage name`);
+    process.exit(1);
+}
 
 if (!boltId) {
     console.error(`${colors.red}Error:${colors.reset} Bolt ID required`);

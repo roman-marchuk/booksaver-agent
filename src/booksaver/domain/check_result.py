@@ -158,12 +158,9 @@ class CheckResult:
     refund_indicators: RefundIndicators | None = None
     extracted_fields: ExtractedBookingFields | None = None
     failure_reason: FailureReason | None = None
-    # US-035: which session mode produced this result. Deliberately NOT
-    # persisted (no check_history column — that schema is owned elsewhere;
-    # see search_check_job.py's note) — it only needs to survive the short
-    # in-process hop from `run_all_active()` to `SavingsPipeline.process()`
-    # within the same scheduler tick, so a savings alert can label a
-    # logged-out live price as a public rate.
+    # US-035: transient session provenance used by the savings pipeline when
+    # labeling an observation; durable authentication evidence lives in
+    # ``price_source``.
     session_mode: SessionMode | None = None
     price_source: PriceSourceProvenance | None = None
     terminal_diagnosis: TerminalBrowserDiagnosis | None = None

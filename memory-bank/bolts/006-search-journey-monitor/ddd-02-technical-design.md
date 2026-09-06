@@ -3,7 +3,14 @@ unit: 001-search-journey-monitor
 bolt: 006-search-journey-monitor
 stage: design
 status: complete
-updated: 2026-07-05T23:35:00Z
+updated: null
+timestamp_provenance:
+  - field: "updated"
+    state: "unknown"
+    original_value: "2026-07-05T23:35:00Z"
+    evidence_commit: "6ff4afea49088ae25084541e87185ad374ff0e4a"
+    evidence_committed_at: "2026-07-05T23:26:19Z"
+    reason: "Original timestamp is later than the commit that recorded it and conflicts with bolt completion; exact historical execution or authoring time is unknown."
 ---
 
 # Technical Design — Search Journey Monitor
@@ -105,3 +112,10 @@ restore/refresh, failure tracking, and the savings pipeline call stay byte-ident
 - `extract_offers` parser: valid array, malformed JSON, out-of-range confidence.
 - Regression: entire existing suite (211 tests) must stay green; savings pipeline consumes
   the new monitor's results in an end-to-end fake-browser test.
+
+## Historical timestamp correction (Intent 024)
+
+Unreliable chronology fields are explicitly unknown. Their original values and Git recording
+evidence remain in frontmatter. Commit timestamps establish when the metadata was recorded,
+not when tests or design work ran. Completion status and historical test claims are unchanged;
+this correction does not independently verify those claims.

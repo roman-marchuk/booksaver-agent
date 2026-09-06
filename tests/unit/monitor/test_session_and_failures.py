@@ -5,142 +5,21 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from booksaver.domain.check_result import CheckResult, FailureCode, FailureReason
-from booksaver.domain.session import SessionMode, SessionState, SessionStatus
+from booksaver.domain.session import SessionState
 from booksaver.domain.value_objects import Platform
 from booksaver.monitor.failure_tracker import FailureTracker
-from booksaver.monitor.session_manager import SessionManager
 
-from .fakes import FakeCheckHistoryRepository, FakeSessionRepository, make_session
-
-# ── SessionManager ────────────────────────────────────────────────────────────
-
-def test_ensure_active_returns_session_when_valid() -> None:
-    session = make_session()
-    manager = SessionManager(FakeSessionRepository(session))
-    assert manager.ensure_active() is session
-
-
-def test_ensure_active_returns_none_when_no_session() -> None:
-    manager = SessionManager(FakeSessionRepository(None))
-    assert manager.ensure_active() is None
-
-
-def test_ensure_active_returns_none_for_reauth_required() -> None:
-    session = make_session().with_status(SessionStatus.REQUIRES_REAUTH)
-    manager = SessionManager(FakeSessionRepository(session))
-    assert manager.ensure_active() is None
-
-
-def test_ensure_active_expires_session_past_expiry() -> None:
-    session = SessionState.new(
-        platform=Platform.BOOKING_COM,
-        cookies=b"[]",
-        authenticated_at=datetime.now(UTC) - timedelta(days=30),
-        expires_at=datetime.now(UTC) - timedelta(days=1),
-    )
-    repo = FakeSessionRepository(session)
-    manager = SessionManager(repo)
-
-    assert manager.ensure_active() is None
-    assert repo.session is not None
-    assert repo.session.status is SessionStatus.EXPIRED  # transition persisted
-
-
-def test_mark_reauth_required_persists_status() -> None:
-    session = make_session()
-    repo = FakeSessionRepository(session)
-    manager = SessionManager(repo)
-
-    manager.mark_reauth_required(session)
-
-    assert repo.session is not None
-    assert repo.session.status is SessionStatus.REQUIRES_REAUTH
-
-
-def test_mark_reauth_required_mentions_vps_compatible_cookie_import(caplog) -> None:
-    """US-035: the re-auth prompt must point at the VPS-compatible fix, not
-    just the headed `booksaver auth` that can't run there."""
-    session = make_session()
-    manager = SessionManager(FakeSessionRepository(session))
-
-    with caplog.at_level("WARNING"):
-        manager.mark_reauth_required(session)
-
-    assert "booksaver auth import" in caplog.text
-
-
-def test_ensure_active_expired_session_log_mentions_cookie_import(caplog) -> None:
-    session = SessionState.new(
-        platform=Platform.BOOKING_COM,
-        cookies=b"[]",
-        authenticated_at=datetime.now(UTC) - timedelta(days=30),
-        expires_at=datetime.now(UTC) - timedelta(days=1),
-    )
-    manager = SessionManager(FakeSessionRepository(session))
-
-    with caplog.at_level("WARNING"):
-        manager.ensure_active()
-
-    assert "booksaver auth import" in caplog.text
-
-
-def test_current_mode_logged_out_when_no_session() -> None:
-    manager = SessionManager(FakeSessionRepository(None))
-    assert manager.current_mode() is SessionMode.LOGGED_OUT
-
-
-def test_current_mode_authenticated_when_valid_session() -> None:
-    manager = SessionManager(FakeSessionRepository(make_session()))
-    assert manager.current_mode() is SessionMode.AUTHENTICATED
-
-
-def test_current_mode_logged_out_for_reauth_required() -> None:
-    session = make_session().with_status(SessionStatus.REQUIRES_REAUTH)
-    manager = SessionManager(FakeSessionRepository(session))
-    assert manager.current_mode() is SessionMode.LOGGED_OUT
-
-
-def test_current_mode_logged_out_for_expired_session() -> None:
-    session = SessionState.new(
-        platform=Platform.BOOKING_COM,
-        cookies=b"[]",
-        authenticated_at=datetime.now(UTC) - timedelta(days=30),
-        expires_at=datetime.now(UTC) - timedelta(days=1),
-    )
-    manager = SessionManager(FakeSessionRepository(session))
-    assert manager.current_mode() is SessionMode.LOGGED_OUT
-
-
-def test_current_mode_does_not_mutate_stored_session() -> None:
-    session = SessionState.new(
-        platform=Platform.BOOKING_COM,
-        cookies=b"[]",
-        authenticated_at=datetime.now(UTC) - timedelta(days=30),
-        expires_at=datetime.now(UTC) - timedelta(days=1),
-    )
-    repo = FakeSessionRepository(session)
-    manager = SessionManager(repo)
-
-    manager.current_mode()
-
-    assert repo.session is session  # unlike ensure_active, no EXPIRED transition
-
-
-def test_save_refreshed_updates_cookies() -> None:
-    session = make_session(cookies=b"old")
-    repo = FakeSessionRepository(session)
-    manager = SessionManager(repo)
-
-    manager.save_refreshed(session, b"new-cookies")
-
-    assert repo.session is not None
-    assert repo.session.cookies == b"new-cookies"
-
+from .fakes import FakeCheckHistoryRepository
 
 # ── SessionState ──────────────────────────────────────────────────────────────
 
 def test_session_without_expiry_never_expires() -> None:
-    assert make_session().is_expired() is False
+    session = SessionState.new(
+        platform=Platform.BOOKING_COM,
+        cookies=b"[]",
+        authenticated_at=datetime.now(UTC),
+    )
+    assert session.is_expired() is False
 
 
 def test_session_with_future_expiry_not_expired() -> None:

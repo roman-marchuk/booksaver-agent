@@ -42,7 +42,7 @@ function extractFrontmatter(content) {
     if (!match) return null;
 
     try {
-        return yaml.load(match[1]);
+        return yaml.load(match[1], { schema: yaml.JSON_SCHEMA });
     } catch (error) {
         console.error(`${colors.red}Error parsing YAML frontmatter:${colors.reset}`, error.message);
         return null;
@@ -212,7 +212,7 @@ async function checkUnitStatus(unit, intent) {
         if (await fs.pathExists(boltPath)) {
             const content = await fs.readFile(boltPath, 'utf8');
             const frontmatter = extractFrontmatter(content);
-            if (frontmatter && frontmatter.unit === unit) {
+            if (frontmatter && frontmatter.intent === intent && frontmatter.unit === unit) {
                 unitBolts.push({
                     id: frontmatter.id || boltDir,
                     status: frontmatter.status || 'planned'
@@ -591,7 +591,10 @@ Examples:
 }
 
 statusIntegrity(shouldFix)
-    .then(count => process.exit(count > 0 && !shouldFix ? 1 : 0))
+    .then(async count => {
+        const residual = shouldFix && count > 0 ? await statusIntegrity(false) : count;
+        process.exit(residual > 0 ? 1 : 0);
+    })
     .catch(error => {
         console.error(`\n${colors.red}Error:${colors.reset}`, error.message);
         process.exit(1);

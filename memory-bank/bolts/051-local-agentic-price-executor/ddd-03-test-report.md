@@ -1,8 +1,15 @@
 ---
 stage: test
 bolt: 051-local-agentic-price-executor
-created: 2026-08-17T04:30:00Z
+created: null
 status: complete
+timestamp_provenance:
+  - field: "created"
+    state: "unknown"
+    original_value: "2026-08-17T04:30:00Z"
+    evidence_commit: "4a363ff8a1729661b89b6446641fe20a3939d832"
+    evidence_committed_at: "2026-08-17T04:50:15Z"
+    reason: "Report creation conflicts with the recorded bolt completion; the recording commit cannot establish the exact report creation time."
 ---
 
 # Test Report: Local Agentic Price Executor
@@ -50,3 +57,10 @@ status: complete
 
 The adapter is ready for the offline qualification bolt and owner canary. This report does not
 claim live Booking.com reliability or authorize invited-user routing.
+
+## Historical timestamp correction (Intent 024)
+
+Unreliable chronology fields are explicitly unknown. Their original values and Git recording
+evidence remain in frontmatter. Commit timestamps establish when the metadata was recorded,
+not when tests or design work ran. Completion status and historical test claims are unchanged;
+this correction does not independently verify those claims.

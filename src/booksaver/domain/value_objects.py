@@ -223,10 +223,6 @@ class TelegramBotSettings:
     owner_chat_id: int | None = None
     poll_timeout_seconds: int = 30
     access_mode: str = "invite"
-    # bolt 011 (US-032): how long an inline-keyboard rebook confirmation waits
-    # for a tap before the gate fail-safe declines (mirrors TerminalConfirmationGate's
-    # EOF-declines behaviour). Additive key inside the existing [telegram_bot] table.
-    rebook_confirm_timeout_seconds: int = 600
 
     def __post_init__(self) -> None:
         if self.enabled and self.owner_chat_id is None:
@@ -245,8 +241,3 @@ class TelegramBotSettings:
                 f"got {self.access_mode!r}"
             )
         object.__setattr__(self, "access_mode", "invite")
-        if self.rebook_confirm_timeout_seconds < 30:
-            raise ValueError(
-                "telegram_bot.rebook_confirm_timeout_seconds must be >= 30, "
-                f"got {self.rebook_confirm_timeout_seconds}"
-            )

@@ -38,10 +38,8 @@ class BotLoop:
         access_guard: Callable[[IncomingCommand], bool],
         on_refused: Callable[[IncomingCommand], None],
         dialog_handler: Callable[[IncomingCommand], bool] | None = None,
-        # bolt 011 (US-032): inline-keyboard rebook confirmations arrive as
-        # `callback_query` updates, not `message`s. Optional + additive — a
-        # daemon with no rebook-gate feature wired up (or a test) simply
-        # never receives callback_query updates through this hook.
+        # Inline keyboards arrive as `callback_query` updates rather than
+        # messages. The handler stays optional for clients without callbacks.
         callback_handler: Callable[[IncomingCallback], None] | None = None,
     ) -> None:
         self._client = client

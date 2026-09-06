@@ -8,12 +8,10 @@ import pytest
 
 from booksaver.application.browser_executor import (
     AgenticPriceExecutionService,
-    FakePriceBrowserExecutor,
     InMemorySessionLeaseBroker,
     OwnerBoundAgenticPriceCheck,
 )
 from booksaver.application.inventory_executor import (
-    FakeInventoryBrowserExecutor,
     InventoryExecutionService,
     InventoryObservationValidator,
     InventoryValidationFailure,
@@ -60,6 +58,7 @@ from booksaver.domain.value_objects import (
     RoomType,
     StayDates,
 )
+from tests.support.executors import FakeInventoryBrowserExecutor, FakePriceBrowserExecutor
 
 NOW = datetime(2026, 8, 25, 18, tzinfo=UTC)
 
@@ -217,18 +216,9 @@ def test_inventory_request_requires_exact_account_subject_and_scopes() -> None:
         replace(_request(), required_scopes=frozenset({InventoryScope.UPCOMING}))
 
 
-def test_session_reference_supports_neutral_subject_and_price_alias() -> None:
+def test_session_reference_requires_a_neutral_subject() -> None:
     lease = _lease()
     assert lease.subject_id == "account:7"
-    assert lease.booking_id == "account:7"
-    legacy = SessionLeaseReference(
-        lease_id="price-lease",
-        owner_user_id=7,
-        booking_id="booking-1",
-        execution_id="price-execution",
-        expires_at=NOW + timedelta(minutes=4),
-    )
-    assert legacy.subject_id == "booking-1"
 
 
 def test_inventory_routing_defaults_agentic_and_is_independent_from_price() -> None:

@@ -24,40 +24,15 @@ from booksaver.domain.inventory_executor import (
 from booksaver.domain.model_policy import EscalationTrigger
 from booksaver.domain.models import Booking
 from booksaver.domain.offer import OfferCandidate
-from booksaver.domain.post_rebook import PostRebookContext, PostRebookResult, ReplacementFacts
-from booksaver.domain.rebook import (
-    ConfirmationAnswer,
-    ConfirmationPrompt,
-    RebookEvent,
-    RebookSession,
-)
 from booksaver.domain.savings import SavingsOpportunity
-from booksaver.domain.session import SessionState
 from booksaver.domain.user import InviteCode, User, UserAccessState, UserRole
-from booksaver.domain.value_objects import ConfirmationId, Money, Occupancy, Platform
+from booksaver.domain.value_objects import Money
 
 
 @runtime_checkable
 class BookingRepository(Protocol):
-    def add(self, booking: Booking, user_id: int | None = None) -> None: ...
     def get_by_id(self, booking_id: str) -> Booking | None: ...
-    def get_by_confirmation(self, confirmation_id: ConfirmationId) -> Booking | None: ...
-    def list_active(self) -> list[Booking]: ...
-    def list_active_for_user(self, user_id: int) -> list[Booking]: ...
-    def list_all_for_user(self, user_id: int) -> list[Booking]: ...
     def get_owner_user_id(self, booking_id: str) -> int | None: ...
-    def exists(self, confirmation_id: ConfirmationId) -> bool: ...
-    def set_occupancy(self, booking_id: str, occupancy: Occupancy) -> None: ...
-    def update(self, booking: Booking) -> None: ...
-    def delete(self, booking_id: str) -> bool: ...
-
-
-@runtime_checkable
-class PostRebookRepository(Protocol):
-    def archive_cancelled_source(self, context: PostRebookContext) -> PostRebookResult: ...
-    def activate_replacement(
-        self, context: PostRebookContext, facts: ReplacementFacts
-    ) -> PostRebookResult: ...
 
 
 @runtime_checkable
@@ -97,12 +72,6 @@ class CheckHistoryRepository(Protocol):
     def count_consecutive_failures(self, booking_id: str) -> int: ...
 
 
-@runtime_checkable
-class SessionRepository(Protocol):
-    def load(self, platform: Platform) -> SessionState | None: ...
-    def save(self, session: SessionState) -> None: ...
-
-
 @dataclass(frozen=True)
 class PageContent:
     url: str
@@ -118,14 +87,6 @@ class ExtractionResult:
     confidence: float  # 0.0 - 1.0; below threshold treated as failed extraction
 
 
-@runtime_checkable
-class BrowserSession(Protocol):
-    def open_page(self, url: str) -> PageContent: ...
-    def get_cookies(self) -> bytes: ...
-    def restore_cookies(self, data: bytes) -> None: ...
-    def is_authenticated(self) -> bool: ...
-
-
 @dataclass(frozen=True)
 class PageSnapshot:
     """What the journey (and, in bolt 007, the agent) sees of the current page."""
@@ -137,7 +98,7 @@ class PageSnapshot:
 
 @runtime_checkable
 class InteractiveBrowser(Protocol):
-    """Interactive superset of BrowserSession for the search journey (ADR-013).
+    """Interactive browser contract for the search journey (ADR-013).
 
     Scripted steps drive it with CSS selectors; bolt 007's agent drives the same
     port. All actions raise on failure (missing selector, timeout) — the journey
@@ -284,25 +245,6 @@ class SavingsRepository(Protocol):
     def list_all_for_user(self, user_id: int) -> list[SavingsOpportunity]: ...
     def list_current_for_user(self, user_id: int) -> list[SavingsOpportunity]: ...
     def mark_notified(self, opportunity_id: str, at: datetime) -> None: ...
-
-
-@runtime_checkable
-class ConfirmationGate(Protocol):
-    def ask(self, prompt: ConfirmationPrompt) -> ConfirmationAnswer: ...
-
-
-@runtime_checkable
-class RebookSessionRepository(Protocol):
-    def add(self, session: RebookSession) -> None: ...
-    def add_if_opportunity_current(self, session: RebookSession) -> bool: ...
-    def update(self, session: RebookSession) -> None: ...
-    def get(self, session_id: str) -> RebookSession | None: ...
-
-
-@runtime_checkable
-class RebookEventRepository(Protocol):
-    def append(self, event: RebookEvent) -> None: ...
-    def list_for_session(self, session_id: str) -> list[RebookEvent]: ...
 
 
 @runtime_checkable

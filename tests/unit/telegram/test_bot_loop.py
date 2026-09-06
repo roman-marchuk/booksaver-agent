@@ -276,7 +276,7 @@ def test_handler_exception_does_not_crash_loop(tmp_path: Path) -> None:
 
 def test_callback_query_routed_to_callback_handler(tmp_path: Path) -> None:
     stop_event = threading.Event()
-    update = _callback_update(1, chat_id=10, user_id=20, data="rebook:abc123:yes")
+    update = _callback_update(1, chat_id=10, user_id=20, data="admin:users")
     client = FakeClient([[update]], stop_event)
     router = CommandRouter()
     offset_store = TelegramOffsetStore(_data_dir(tmp_path))
@@ -297,7 +297,7 @@ def test_callback_query_routed_to_callback_handler(tmp_path: Path) -> None:
     assert seen[0].chat_id == 10
     assert seen[0].user_id == 20
     assert seen[0].message_id == 42
-    assert seen[0].data == "rebook:abc123:yes"
+    assert seen[0].data == "admin:users"
 
 
 def test_callback_envelope_carries_username_and_chat_type(tmp_path: Path) -> None:
@@ -306,7 +306,7 @@ def test_callback_envelope_carries_username_and_chat_type(tmp_path: Path) -> Non
         1,
         chat_id=-10,
         user_id=20,
-        data="rebook:abc123:yes",
+        data="admin:users",
         username="Alice",
         chat_type="supergroup",
     )
@@ -330,7 +330,7 @@ def test_callback_envelope_carries_username_and_chat_type(tmp_path: Path) -> Non
 
 def test_callback_missing_chat_type_is_unknown(tmp_path: Path) -> None:
     stop_event = threading.Event()
-    update = _callback_update(1, chat_id=10, user_id=20, data="rebook:x:yes")
+    update = _callback_update(1, chat_id=10, user_id=20, data="admin:users")
     del update["callback_query"]["message"]["chat"]["type"]
     client = FakeClient([[update]], stop_event)
     seen: list[IncomingCallback] = []
@@ -351,7 +351,7 @@ def test_callback_missing_chat_type_is_unknown(tmp_path: Path) -> None:
 
 def test_callback_query_without_handler_is_ignored_not_crashed(tmp_path: Path) -> None:
     stop_event = threading.Event()
-    update = _callback_update(1, chat_id=10, user_id=20, data="rebook:abc123:yes")
+    update = _callback_update(1, chat_id=10, user_id=20, data="admin:users")
     client = FakeClient([[update]], stop_event)
     loop, _router, _ = _make_loop(client, tmp_path)
 

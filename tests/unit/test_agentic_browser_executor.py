@@ -267,7 +267,7 @@ def _request(broker: InMemorySessionLeaseBroker) -> PriceExecutionRequest:
     execution_id = "execution-1"
     lease = broker.issue(
         owner_user_id=7,
-        booking_id="booking-1",
+        subject_id="booking-1",
         execution_id=execution_id,
         session_material=b'[{"name":"session","value":"secret","domain":".booking.com","path":"/"}]',
     )

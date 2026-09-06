@@ -37,9 +37,6 @@ from booksaver.infrastructure.browser.agentic_executor import (
     TypedObservation,
     build_trusted_search_url,
 )
-from booksaver.infrastructure.browser.browser_use_inventory_executor import (
-    BrowserUseActionGuard,
-)
 from booksaver.infrastructure.browser.browser_use_price_executor import (
     BrowserUsePriceBrowserExecutor,
     BrowserUsePriceObservationSubmission,
@@ -55,6 +52,9 @@ from booksaver.infrastructure.browser.browser_use_price_executor import (
     _terminal_status,
     _trusted_input_node_allowed,
     _typed_observation_error_code,
+)
+from booksaver.infrastructure.browser.browser_use_runtime import (
+    BrowserUseActionGuard,
 )
 
 
@@ -98,7 +98,7 @@ def _request(broker: InMemorySessionLeaseBroker) -> PriceExecutionRequest:
     execution_id = "browser-use-price-1"
     lease = broker.issue(
         owner_user_id=7,
-        booking_id="booking-1",
+        subject_id="booking-1",
         execution_id=execution_id,
         session_material=b'[{"name":"session","value":"secret","domain":".booking.com"}]',
     )

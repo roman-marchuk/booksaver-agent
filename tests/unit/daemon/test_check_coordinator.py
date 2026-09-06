@@ -11,7 +11,6 @@ from typing import Any
 
 import pytest
 
-from booksaver.application.inventory_executor import FakeInventoryBrowserExecutor
 from booksaver.application.model_policy import AdaptiveModelSession
 from booksaver.application.ports import PageContent
 from booksaver.daemon.check_coordinator import (
@@ -120,6 +119,8 @@ from booksaver.infrastructure.persistence.sqlite_store import (
     SqliteUserRepository,
 )
 from booksaver.monitor.user_limits import DailyCounter, build_check_plan
+from tests.support.bookings import seed_booking
+from tests.support.executors import FakeInventoryBrowserExecutor
 from tests.unit.monitor.fakes import FakeInteractiveBrowser, make_booking
 
 
@@ -208,6 +209,19 @@ def _config(tmp_path: Path, *, checks: int = 3, llm_calls: int = 5) -> Config:
     )
 
 
+def _build_coordinator(
+    config: Config, stop_event: threading.Event | None = None, **dependencies: Any
+) -> CheckCoordinator:
+    """Use inert external adapters unless a scenario explicitly overrides them."""
+    adapters = {
+        "llm_factory_builder": lambda _cfg, _store: object(),
+        "notifier_builder": lambda _cfg: [],
+        "invalid_key_notifier": lambda _repo, _results: None,
+        **dependencies,
+    }
+    return CheckCoordinator(config, stop_event or threading.Event(), **adapters)
+
+
 def _coordinator(
     tmp_path: Path,
     *,
@@ -216,12 +230,8 @@ def _coordinator(
     check_counter: DailyCounter | None = None,
     llm_counter: DailyCounter | None = None,
 ) -> CheckCoordinator:
-    return CheckCoordinator(
+    return _build_coordinator(
         _config(tmp_path, checks=checks, llm_calls=llm_calls),
-        threading.Event(),
-        llm_factory_builder=lambda _cfg, _store: object(),
-        notifier_builder=lambda _cfg: [],
-        invalid_key_notifier=lambda _repo, _results: None,
         browser_factory=BrowserContext,
         inventory_synchronizer=_complete_sync,
         checks_today=check_counter,
@@ -237,7 +247,7 @@ def _add(tmp_path: Path, telegram_id: int, count: int = 1) -> tuple[int, list[An
             for index in range(1, count + 1)
         ]
         for booking in bookings:
-            SqliteBookingRepository(store).add(booking, user_id=user.user_id)
+            seed_booking(store, booking, user_id=user.user_id)
     return user.user_id, bookings
 
 
@@ -396,7 +406,7 @@ def test_scheduled_slot_runs_only_its_user_and_completes_durably(
             SqliteUserRepository(store).get_or_create_by_telegram_id(202, UserRole.USER).user_id
         )
         foreign_bookings = [make_booking("99999999-1111-4111-8111-111111111111")]
-        SqliteBookingRepository(store).add(foreign_bookings[0], user_id=foreign_user_id)
+        seed_booking(store, foreign_bookings[0], user_id=foreign_user_id)
     planned_at = datetime.now(UTC) - timedelta(seconds=1)
     identity = _scheduled_slot(tmp_path, selected_user_id, planned_at)
     ran: list[str] = []
@@ -437,12 +447,9 @@ def test_check_now_shares_one_lazy_adaptive_job_across_sync_and_search(
             budgets.append(budget)
             return runtime
 
-    coordinator = CheckCoordinator(
+    coordinator = _build_coordinator(
         _config(tmp_path),
-        threading.Event(),
         llm_factory_builder=lambda _cfg, _store: AdaptiveFactory(),
-        notifier_builder=lambda _cfg: [],
-        invalid_key_notifier=lambda _repo, _results: None,
         browser_factory=BrowserContext,
     )
     _user_id, bookings = _add(tmp_path, 101)
@@ -503,12 +510,9 @@ def test_adaptive_job_charges_legacy_counter_for_each_physical_reservation(
         def adaptive_runtime_for_user(self, _user_id: int, _budget: Any) -> object:
             return object()
 
-    coordinator = CheckCoordinator(
+    coordinator = _build_coordinator(
         _config(tmp_path),
-        threading.Event(),
         llm_factory_builder=lambda _cfg, _store: AdaptiveFactory(),
-        notifier_builder=lambda _cfg: [],
-        invalid_key_notifier=lambda _repo, _results: None,
         llm_calls_today=calls,
     )
     user_id, _bookings = _add(tmp_path, 101)
@@ -546,12 +550,9 @@ def test_agentic_follow_on_shares_outer_job_cap_but_uses_owner_env_provenance(
         def adaptive_runtime_for_user(self, _user_id: int, _budget: Any) -> object:
             return object()
 
-    coordinator = CheckCoordinator(
+    coordinator = _build_coordinator(
         _config(tmp_path),
-        threading.Event(),
         llm_factory_builder=lambda _cfg, _store: AdaptiveFactory(),
-        notifier_builder=lambda _cfg: [],
-        invalid_key_notifier=lambda _repo, _results: None,
     )
     user_id, _bookings = _add(tmp_path, 101)
 
@@ -581,8 +582,7 @@ def test_agentic_follow_on_shares_outer_job_cap_but_uses_owner_env_provenance(
             budget=agentic_budget,
         ).start(TokenEnvelope(1, 1))
         rows = store.conn.execute(
-            "SELECT job_id, attempt_ordinal FROM llm_cost_reservations "
-            "ORDER BY attempt_ordinal"
+            "SELECT job_id, attempt_ordinal FROM llm_cost_reservations ORDER BY attempt_ordinal"
         ).fetchall()
 
     assert second.attempt is not None
@@ -603,12 +603,9 @@ def test_adaptive_follow_on_reuses_agentic_inventory_job_and_next_ordinal(
         def adaptive_runtime_for_user(self, _user_id: int, _budget: Any) -> object:
             return object()
 
-    coordinator = CheckCoordinator(
+    coordinator = _build_coordinator(
         _config(tmp_path),
-        threading.Event(),
         llm_factory_builder=lambda _cfg, _store: AdaptiveFactory(),
-        notifier_builder=lambda _cfg: [],
-        invalid_key_notifier=lambda _repo, _results: None,
     )
     user_id, _bookings = _add(tmp_path, 101)
 
@@ -638,8 +635,7 @@ def test_adaptive_follow_on_reuses_agentic_inventory_job_and_next_ordinal(
             budget=adaptive.budget,
         ).start(TokenEnvelope(1, 1))
         rows = store.conn.execute(
-            "SELECT job_id, attempt_ordinal FROM llm_cost_reservations "
-            "ORDER BY attempt_ordinal"
+            "SELECT job_id, attempt_ordinal FROM llm_cost_reservations ORDER BY attempt_ordinal"
         ).fetchall()
 
     assert second.attempt is not None
@@ -761,7 +757,8 @@ def test_completion_rechecks_booking_after_long_running_check(tmp_path: Path) ->
     outcomes: list[ImmediateCompletion] = []
 
     def delete_during_run(self: Any, store: Any, browser: Any, owner: int, booking: Any) -> Any:
-        SqliteBookingRepository(store).delete(booking.booking_id)
+        store.conn.execute("DELETE FROM bookings WHERE booking_id = ?", (booking.booking_id,))
+        store.conn.commit()
         return _failure(booking.booking_id)
 
     coordinator._run_booking = MethodType(  # type: ignore[method-assign]
@@ -838,12 +835,8 @@ def test_scheduled_checks_use_a_fresh_browser_context_per_booking(tmp_path: Path
         def __exit__(self, *args: object) -> None:
             closed.append(created[-1])
 
-    coordinator = CheckCoordinator(
+    coordinator = _build_coordinator(
         _config(tmp_path),
-        threading.Event(),
-        llm_factory_builder=lambda _cfg, _store: object(),
-        notifier_builder=lambda _cfg: [],
-        invalid_key_notifier=lambda _repo, _results: None,
         browser_factory=FreshBrowserContext,
         inventory_synchronizer=_complete_sync,
     )
@@ -915,7 +908,7 @@ def test_one_users_missing_session_does_not_stop_another_users_scheduled_check(
     with SqliteStore(tmp_path / "booksaver.db") as store:
         second_user = SqliteUserRepository(store).get_or_create_by_telegram_id(202, UserRole.USER)
         second_booking = make_booking("99999999-1111-4111-8111-111111111111")
-        SqliteBookingRepository(store).add(second_booking, user_id=second_user.user_id)
+        seed_booking(store, second_booking, user_id=second_user.user_id)
     _seed_session(sessions, second_user.user_id)
     ran: list[int] = []
 
@@ -938,12 +931,8 @@ def test_one_users_missing_session_does_not_stop_another_users_scheduled_check(
         "booksaver.daemon.check_coordinator.BookingComSearchMonitor",
         SecondUserMonitor,
     )
-    coordinator = CheckCoordinator(
+    coordinator = _build_coordinator(
         _config(tmp_path),
-        threading.Event(),
-        llm_factory_builder=lambda _cfg, _store: object(),
-        notifier_builder=lambda _cfg: [],
-        invalid_key_notifier=lambda _repo, _results: None,
         browser_factory=BrowserContext,
         session_repository=sessions,
         inventory_synchronizer=_complete_sync,
@@ -986,12 +975,8 @@ def test_revoked_plan_snapshot_never_starts_browser(tmp_path: Path, monkeypatch:
             return None
 
     monkeypatch.setattr("booksaver.daemon.check_coordinator.build_check_plan", revoke_after_plan)
-    coordinator = CheckCoordinator(
+    coordinator = _build_coordinator(
         _config(tmp_path),
-        threading.Event(),
-        llm_factory_builder=lambda _cfg, _store: object(),
-        notifier_builder=lambda _cfg: [],
-        invalid_key_notifier=lambda _repo, _results: None,
         browser_factory=ObservedBrowser,
         inventory_synchronizer=_complete_sync,
     )
@@ -1038,11 +1023,8 @@ def test_midflight_revocation_keeps_history_but_suppresses_post_check_effects(
         "booksaver.daemon.check_coordinator.SavingsPipeline.process",
         lambda _self, results: pipeline_calls.append(results),
     )
-    coordinator = CheckCoordinator(
+    coordinator = _build_coordinator(
         _config(tmp_path),
-        threading.Event(),
-        llm_factory_builder=lambda _cfg, _store: object(),
-        notifier_builder=lambda _cfg: [],
         invalid_key_notifier=lambda _repo, results: invalid_key_calls.append(results),
         browser_factory=BrowserContext,
         inventory_synchronizer=_complete_sync,
@@ -1129,12 +1111,8 @@ def test_runtime_signed_out_failure_marks_only_resolved_revision_for_reauth(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
     sessions = _session_repo(tmp_path)
-    coordinator = CheckCoordinator(
+    coordinator = _build_coordinator(
         _config(tmp_path),
-        threading.Event(),
-        llm_factory_builder=lambda _cfg, _store: object(),
-        notifier_builder=lambda _cfg: [],
-        invalid_key_notifier=lambda _repo, _results: None,
         browser_factory=BrowserContext,
         session_repository=sessions,
         inventory_synchronizer=_complete_sync,
@@ -1185,12 +1163,9 @@ def test_scheduled_and_manual_boundary_uses_normal_history_trace_and_savings_pip
     )
     cfg = _config(tmp_path)
     sessions = _session_repo(tmp_path)
-    coordinator = CheckCoordinator(
+    coordinator = _build_coordinator(
         cfg,
-        threading.Event(),
         llm_factory_builder=lambda _cfg, _store: NullLLMFactory(),
-        notifier_builder=lambda _cfg: [],
-        invalid_key_notifier=lambda _repo, _results: None,
         browser_factory=lambda: ExistingBrowserContext(browser),
         session_repository=sessions,
         inventory_synchronizer=_complete_sync,
@@ -1213,12 +1188,9 @@ def test_scheduled_and_manual_boundary_uses_normal_history_trace_and_savings_pip
 def test_stopping_refuses_new_immediate_work(tmp_path: Path) -> None:
     stop = threading.Event()
     stop.set()
-    coordinator = CheckCoordinator(
+    coordinator = _build_coordinator(
         _config(tmp_path),
         stop,
-        llm_factory_builder=lambda _cfg, _store: object(),
-        notifier_builder=lambda _cfg: [],
-        invalid_key_notifier=lambda _repo, _results: None,
         browser_factory=BrowserContext,
         inventory_synchronizer=_complete_sync,
     )
@@ -1272,12 +1244,8 @@ def test_bookings_request_discovers_and_projects_authenticated_inventory(
         def get_cookies(self) -> bytes:
             return b"[]"
 
-    coordinator = CheckCoordinator(
+    coordinator = _build_coordinator(
         _config(tmp_path),
-        threading.Event(),
-        llm_factory_builder=lambda _cfg, _store: object(),
-        notifier_builder=lambda _cfg: [],
-        invalid_key_notifier=lambda _repo, _results: None,
         browser_factory=lambda: ExistingBrowserContext(InventoryBrowser()),
         session_repository=sessions,
     )
@@ -1332,12 +1300,8 @@ def test_incident_resolution_runs_only_after_inventory_browser_closes(
         def __exit__(self, *args: object) -> None:
             return None
 
-    coordinator = CheckCoordinator(
+    coordinator = _build_coordinator(
         _config(tmp_path),
-        threading.Event(),
-        llm_factory_builder=lambda _cfg, _store: object(),
-        notifier_builder=lambda _cfg: [],
-        invalid_key_notifier=lambda _repo, _results: None,
         browser_factory=ClosingBrowserContext,
         inventory_synchronizer=_complete_sync,
         incident_recorder_factory=RecorderContext,
@@ -1376,12 +1340,8 @@ def test_incident_factory_failure_never_changes_inventory_completion(
         assert browser_closed.is_set()
         raise RuntimeError("incident store unavailable")
 
-    coordinator = CheckCoordinator(
+    coordinator = _build_coordinator(
         _config(tmp_path),
-        threading.Event(),
-        llm_factory_builder=lambda _cfg, _store: object(),
-        notifier_builder=lambda _cfg: [],
-        invalid_key_notifier=lambda _repo, _results: None,
         browser_factory=ClosingBrowserContext,
         inventory_synchronizer=_complete_sync,
         incident_recorder_factory=failing_incident_factory,
@@ -1426,12 +1386,8 @@ def test_predictable_inventory_failure_does_not_open_incident_sink(
     def forbidden_factory() -> AbstractContextManager[Any]:
         raise AssertionError("predictable failure must not reach the incident sink")
 
-    coordinator = CheckCoordinator(
+    coordinator = _build_coordinator(
         _config(tmp_path),
-        threading.Event(),
-        llm_factory_builder=lambda _cfg, _store: object(),
-        notifier_builder=lambda _cfg: [],
-        invalid_key_notifier=lambda _repo, _results: None,
         browser_factory=BrowserContext,
         inventory_synchronizer=predictable_failure,
         incident_recorder_factory=forbidden_factory,
@@ -1607,12 +1563,9 @@ def test_inventory_interpreter_call_is_charged_to_requesting_user(
             assert role == "inventory_interpreter"
             return Interpreter()
 
-    coordinator = CheckCoordinator(
+    coordinator = _build_coordinator(
         _config(tmp_path),
-        threading.Event(),
         llm_factory_builder=lambda _cfg, _store: Factory(),
-        notifier_builder=lambda _cfg: [],
-        invalid_key_notifier=lambda _repo, _results: None,
         browser_factory=lambda: ExistingBrowserContext(InventoryBrowser()),
         session_repository=sessions,
     )
@@ -1666,14 +1619,11 @@ def test_inventory_with_no_daily_allowance_stays_deterministic_only(
 
     completed = threading.Event()
     outcomes: list[InventoryCompletion] = []
-    coordinator = CheckCoordinator(
+    coordinator = _build_coordinator(
         cfg,
-        threading.Event(),
         llm_factory_builder=lambda _cfg, _store: (_ for _ in ()).throw(
             AssertionError("factory must not resolve without allowance")
         ),
-        notifier_builder=lambda _cfg: [],
-        invalid_key_notifier=lambda _repo, _results: None,
         browser_factory=lambda: ExistingBrowserContext(Browser()),
         session_repository=sessions,
         llm_calls_today=calls,
@@ -1725,12 +1675,9 @@ def test_inventory_personal_key_failure_is_preserved_with_setkey_guidance(
 
     completed = threading.Event()
     outcomes: list[InventoryCompletion] = []
-    coordinator = CheckCoordinator(
+    coordinator = _build_coordinator(
         _config(tmp_path),
-        threading.Event(),
         llm_factory_builder=lambda _cfg, _store: Factory(),
-        notifier_builder=lambda _cfg: [],
-        invalid_key_notifier=lambda _repo, _results: None,
         browser_factory=lambda: ExistingBrowserContext(Browser()),
         session_repository=sessions,
     )
@@ -1763,12 +1710,8 @@ def test_check_now_synchronizes_before_resolving_booking(tmp_path: Path) -> None
         events.append(trigger.value)
         return _complete_sync(_store, _browser, _user_id, trigger)
 
-    coordinator = CheckCoordinator(
+    coordinator = _build_coordinator(
         _config(tmp_path),
-        threading.Event(),
-        llm_factory_builder=lambda _cfg, _store: object(),
-        notifier_builder=lambda _cfg: [],
-        invalid_key_notifier=lambda _repo, _results: None,
         browser_factory=BrowserContext,
         inventory_synchronizer=synchronize,
     )
@@ -1812,12 +1755,8 @@ def test_agentic_inventory_routes_owner_and_disclosed_invitee_without_legacy_bro
         legacy_browser_opens.append(None)
         return BrowserContext()
 
-    coordinator = CheckCoordinator(
+    coordinator = _build_coordinator(
         _config(tmp_path),
-        threading.Event(),
-        llm_factory_builder=lambda _cfg, _store: object(),
-        notifier_builder=lambda _cfg: [],
-        invalid_key_notifier=lambda _repo, _results: None,
         browser_factory=legacy_browser_factory,
         session_repository=sessions,
         agentic_inventory_executor_factory=lambda _budget, _leases: executor,
@@ -1865,12 +1804,8 @@ def test_bookings_uses_browser_use_factory_while_other_inventory_keeps_stagehand
         legacy_browser_opens.append(None)
         return BrowserContext()
 
-    coordinator = CheckCoordinator(
+    coordinator = _build_coordinator(
         _config(tmp_path),
-        threading.Event(),
-        llm_factory_builder=lambda _cfg, _store: object(),
-        notifier_builder=lambda _cfg: [],
-        invalid_key_notifier=lambda _repo, _results: None,
         browser_factory=legacy_browser_factory,
         session_repository=sessions,
         agentic_inventory_executor_factory=lambda _budget, _leases: stagehand,
@@ -1898,12 +1833,8 @@ def test_undisclosed_invitee_stays_on_legacy_inventory_route(tmp_path: Path) -> 
     with SqliteStore(tmp_path / "booksaver.db") as store:
         invitee = SqliteUserRepository(store).get_or_create_by_telegram_id(202, UserRole.USER)
     executor = FakeInventoryBrowserExecutor([_agentic_inventory_result()])
-    coordinator = CheckCoordinator(
+    coordinator = _build_coordinator(
         _config(tmp_path),
-        threading.Event(),
-        llm_factory_builder=lambda _cfg, _store: object(),
-        notifier_builder=lambda _cfg: [],
-        invalid_key_notifier=lambda _repo, _results: None,
         browser_factory=BrowserContext,
         agentic_inventory_executor_factory=lambda _budget, _leases: executor,
     )
@@ -1953,12 +1884,8 @@ def test_agentic_inventory_terminal_failure_never_falls_back_to_legacy_in_same_j
         legacy_calls.append(None)
         return BrowserContext()
 
-    coordinator = CheckCoordinator(
+    coordinator = _build_coordinator(
         _config(tmp_path),
-        threading.Event(),
-        llm_factory_builder=lambda _cfg, _store: object(),
-        notifier_builder=lambda _cfg: [],
-        invalid_key_notifier=lambda _repo, _results: None,
         browser_factory=legacy_browser_factory,
         session_repository=sessions,
         agentic_inventory_executor_factory=lambda _budget, _leases: executor,
@@ -1997,12 +1924,8 @@ def test_configured_agentic_inventory_without_executor_fails_closed(
         legacy_browser_opens.append(None)
         return BrowserContext()
 
-    coordinator = CheckCoordinator(
+    coordinator = _build_coordinator(
         _config(tmp_path),
-        threading.Event(),
-        llm_factory_builder=lambda _cfg, _store: object(),
-        notifier_builder=lambda _cfg: [],
-        invalid_key_notifier=lambda _repo, _results: None,
         browser_factory=legacy_browser_factory,
         session_repository=sessions,
     )
@@ -2056,12 +1979,8 @@ def test_current_agentic_positive_allows_selected_check_with_shared_residual_lim
             )
         ]
     )
-    coordinator = CheckCoordinator(
+    coordinator = _build_coordinator(
         _config(tmp_path),
-        threading.Event(),
-        llm_factory_builder=lambda _cfg, _store: object(),
-        notifier_builder=lambda _cfg: [],
-        invalid_key_notifier=lambda _repo, _results: None,
         browser_factory=BrowserContext,
         session_repository=sessions,
         agentic_inventory_executor_factory=lambda _budget, _leases: executor,
@@ -2152,12 +2071,8 @@ def test_selected_booking_without_current_agentic_positive_is_rejected(
         price_browser_opens.append(None)
         return BrowserContext()
 
-    coordinator = CheckCoordinator(
+    coordinator = _build_coordinator(
         _config(tmp_path),
-        threading.Event(),
-        llm_factory_builder=lambda _cfg, _store: object(),
-        notifier_builder=lambda _cfg: [],
-        invalid_key_notifier=lambda _repo, _results: None,
         browser_factory=browser_factory,
         session_repository=sessions,
         agentic_inventory_executor_factory=lambda _budget, _leases: executor,
@@ -2210,15 +2125,9 @@ def test_selected_check_surfaces_agentic_inventory_terminal_detail(
     )
     price_browser_opens: list[None] = []
 
-    coordinator = CheckCoordinator(
+    coordinator = _build_coordinator(
         _config(tmp_path),
-        threading.Event(),
-        llm_factory_builder=lambda _cfg, _store: object(),
-        notifier_builder=lambda _cfg: [],
-        invalid_key_notifier=lambda _repo, _results: None,
-        browser_factory=lambda: (
-            price_browser_opens.append(None) or BrowserContext()
-        ),
+        browser_factory=lambda: price_browser_opens.append(None) or BrowserContext(),
         session_repository=sessions,
         agentic_inventory_executor_factory=lambda _budget, _leases: executor,
     )
@@ -2249,7 +2158,7 @@ def test_agentic_price_exhausted_shared_allowance_reports_budget(
         users = SqliteUserRepository(store)
         owner = users.get_owner()
         users.link_telegram_id(owner.user_id, 101)
-        SqliteBookingRepository(store).add(booking, user_id=owner.user_id)
+        seed_booking(store, booking, user_id=owner.user_id)
     _seed_session(sessions, owner.user_id)
     config = _config(tmp_path)
     config.agentic_browser_settings = replace(
@@ -2257,17 +2166,11 @@ def test_agentic_price_exhausted_shared_allowance_reports_budget(
         routing=ExecutionRoutingMode.OWNER_CANARY,
     )
     executor_calls: list[None] = []
-    coordinator = CheckCoordinator(
+    coordinator = _build_coordinator(
         config,
-        threading.Event(),
-        llm_factory_builder=lambda _cfg, _store: object(),
-        notifier_builder=lambda _cfg: [],
-        invalid_key_notifier=lambda _repo, _results: None,
         browser_factory=BrowserContext,
         session_repository=sessions,
-        agentic_executor_factory=lambda _budget, _leases: (
-            executor_calls.append(None) or object()
-        ),
+        agentic_executor_factory=lambda _budget, _leases: executor_calls.append(None) or object(),
     )
     exhausted = AgenticBrowserJobContext(
         local_user_id=owner.user_id,
@@ -2311,7 +2214,7 @@ def test_disclosed_unqualified_invitee_uses_consented_users_agentic_price_route(
     with SqliteStore(tmp_path / "booksaver.db") as store:
         users = SqliteUserRepository(store)
         invitee = users.get_or_create_by_telegram_id(202, UserRole.USER)
-        SqliteBookingRepository(store).add(booking, user_id=invitee.user_id)
+        seed_booking(store, booking, user_id=invitee.user_id)
         SqliteAgenticDisclosureConsentRepository(store).acknowledge(
             user_id=invitee.user_id,
             disclosure_version=config.agentic_browser_settings.disclosure_version,
@@ -2342,12 +2245,8 @@ def test_disclosed_unqualified_invitee_uses_consented_users_agentic_price_route(
         "booksaver.daemon.check_coordinator.BookingComSearchMonitor",
         Monitor,
     )
-    coordinator = CheckCoordinator(
+    coordinator = _build_coordinator(
         config,
-        threading.Event(),
-        llm_factory_builder=lambda _cfg, _store: object(),
-        notifier_builder=lambda _cfg: [],
-        invalid_key_notifier=lambda _repo, _results: None,
         browser_factory=BrowserContext,
         session_repository=sessions,
         agentic_executor_factory=lambda _budget, _leases: (
@@ -2380,7 +2279,7 @@ def test_coordinated_job_never_starts_unbudgeted_legacy_llm_fallback(
         users = SqliteUserRepository(store)
         owner = users.get_owner()
         users.link_telegram_id(owner.user_id, 101)
-        SqliteBookingRepository(store).add(booking, user_id=owner.user_id)
+        seed_booking(store, booking, user_id=owner.user_id)
     _seed_session(sessions, owner.user_id)
     builder_calls: list[None] = []
     observed_factories: list[object | None] = []
@@ -2410,12 +2309,9 @@ def test_coordinated_job_never_starts_unbudgeted_legacy_llm_fallback(
         "booksaver.daemon.check_coordinator.BookingComSearchMonitor",
         Monitor,
     )
-    coordinator = CheckCoordinator(
+    coordinator = _build_coordinator(
         _config(tmp_path),
-        threading.Event(),
         llm_factory_builder=build_factory,
-        notifier_builder=lambda _cfg: [],
-        invalid_key_notifier=lambda _repo, _results: None,
         browser_factory=BrowserContext,
         session_repository=sessions,
     )
@@ -2475,12 +2371,8 @@ def test_scheduled_agentic_plan_contains_only_current_run_positive_bookings(
             )
         ]
     )
-    coordinator = CheckCoordinator(
+    coordinator = _build_coordinator(
         _config(tmp_path, checks=10),
-        threading.Event(),
-        llm_factory_builder=lambda _cfg, _store: object(),
-        notifier_builder=lambda _cfg: [],
-        invalid_key_notifier=lambda _repo, _results: None,
         browser_factory=BrowserContext,
         session_repository=sessions,
         agentic_inventory_executor_factory=lambda _budget, _leases: executor,
@@ -2543,12 +2435,8 @@ def test_compatibility_scheduler_reuses_inventory_residual_agentic_limits(
             )
         ]
     )
-    coordinator = CheckCoordinator(
+    coordinator = _build_coordinator(
         _config(tmp_path, checks=10, llm_calls=20),
-        threading.Event(),
-        llm_factory_builder=lambda _cfg, _store: object(),
-        notifier_builder=lambda _cfg: [],
-        invalid_key_notifier=lambda _repo, _results: None,
         browser_factory=BrowserContext,
         session_repository=sessions,
         agentic_inventory_executor_factory=lambda _budget, _leases: executor,

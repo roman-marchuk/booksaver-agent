@@ -213,42 +213,13 @@ class TrustedPriceQuery:
         object.__setattr__(self, "currency", normalized_currency)
 
 
-@dataclass(frozen=True, slots=True, init=False)
+@dataclass(frozen=True, slots=True)
 class SessionLeaseReference:
     lease_id: str
     owner_user_id: int
     subject_id: str
     execution_id: str
     expires_at: datetime
-
-    def __init__(
-        self,
-        lease_id: str,
-        owner_user_id: int,
-        subject_id: str | None = None,
-        execution_id: str = "",
-        expires_at: datetime | None = None,
-        *,
-        booking_id: str | None = None,
-    ) -> None:
-        """Create a capability-neutral lease reference.
-
-        ``booking_id`` remains a temporary keyword-only compatibility alias for the existing price
-        executor while callers migrate to ``subject_id``.  Supplying both is rejected.
-        """
-        if subject_id is not None and booking_id is not None:
-            raise ValueError("provide subject_id or booking_id, not both")
-        selected_subject = subject_id if subject_id is not None else booking_id
-        if selected_subject is None:
-            raise ValueError("session lease subject_id is required")
-        if expires_at is None:
-            raise ValueError("session lease expiry is required")
-        object.__setattr__(self, "lease_id", lease_id)
-        object.__setattr__(self, "owner_user_id", owner_user_id)
-        object.__setattr__(self, "subject_id", selected_subject)
-        object.__setattr__(self, "execution_id", execution_id)
-        object.__setattr__(self, "expires_at", expires_at)
-        self.__post_init__()
 
     def __post_init__(self) -> None:
         for value, field in (
@@ -264,12 +235,6 @@ class SessionLeaseReference:
 
     def is_expired(self, now: datetime | None = None) -> bool:
         return (now or datetime.now(UTC)) >= self.expires_at
-
-    @property
-    def booking_id(self) -> str:
-        """Compatibility view for price-only callers; new capabilities use ``subject_id``."""
-        return self.subject_id
-
 
 @dataclass(frozen=True, slots=True)
 class ExecutionLimits:

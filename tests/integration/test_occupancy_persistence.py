@@ -1,12 +1,12 @@
-"""US-017: occupancy persistence, v5 migration, and legacy-booking backfill."""
+"""Occupancy projection persistence and legacy schema migration."""
 
 import sqlite3
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
 
-from booksaver.application.register_booking import register_booking
+from booksaver.domain.models import Booking
 from booksaver.domain.value_objects import (
     ConfirmationId,
     Money,
@@ -23,6 +23,7 @@ from booksaver.infrastructure.persistence.sqlite_store import (
     SqliteBookingRepository,
     SqliteStore,
 )
+from tests.support.bookings import seed_booking
 
 _V4_DDL = """\
 CREATE TABLE schema_meta (version INTEGER NOT NULL, applied_at TEXT NOT NULL);
@@ -84,8 +85,8 @@ def _make_v4_db(db_path: Path) -> None:
     conn.close()
 
 
-def _booking_kwargs(confirmation: str = "BKG-OCC") -> dict:
-    return dict(
+def _booking(confirmation: str = "BKG-OCC") -> Booking:
+    return Booking.create(
         platform=Platform.BOOKING_COM,
         product_type=ProductType.HOTEL,
         confirmation_id=ConfirmationId.of(confirmation),
@@ -95,14 +96,16 @@ def _booking_kwargs(confirmation: str = "BKG-OCC") -> dict:
         baseline_price=Money.of("500.00", "EUR"),
         refundability=RefundabilityPolicy(is_refundable=True, note="Free cancellation"),
         occupancy=Occupancy(adults=2, children=2, rooms=1),
+        registered_at=datetime.now(UTC),
     )
 
 
 class TestOccupancyRoundTrip:
-    def test_registered_occupancy_survives_round_trip(self, tmp_path):
+    def test_synchronized_occupancy_survives_round_trip(self, tmp_path):
         with SqliteStore(tmp_path / "t.db") as store:
             repo = SqliteBookingRepository(store)
-            booking, _ = register_booking(repo=repo, **_booking_kwargs())
+            booking = _booking()
+            seed_booking(store, booking)
             fetched = repo.get_by_id(booking.booking_id)
         assert fetched.occupancy == Occupancy(adults=2, children=2, rooms=1)
 
@@ -144,9 +147,8 @@ class TestV5Migration:
             old_checks = store.conn.execute(
                 "SELECT check_id, failure_code FROM check_history"
             ).fetchall()
-            replacement, _ = register_booking(
-                repo=repo, **_booking_kwargs("POST-CUTOVER")
-            )
+            replacement = _booking("POST-CUTOVER")
+            seed_booking(store, replacement)
             # The rebuilt history table still accepts the v5 'agent' method.
             store.conn.execute(
                 "INSERT INTO check_history (check_id, booking_id, checked_at, outcome,"
@@ -168,23 +170,3 @@ class TestV5Migration:
         with SqliteStore(db_path) as store:  # second open must not re-migrate/fail
             row = store.conn.execute("SELECT MAX(version) FROM schema_meta").fetchone()
         assert row[0] == SCHEMA_VERSION
-
-
-class TestSetOccupancy:
-    def test_legacy_booking_cannot_be_backfilled_after_cutover(self, tmp_path):
-        db_path = tmp_path / "old.db"
-        _make_v4_db(db_path)
-
-        with SqliteStore(db_path) as store:
-            repo = SqliteBookingRepository(store)
-            with pytest.raises(KeyError, match="legacy-1"):
-                repo.set_occupancy(
-                    "legacy-1", Occupancy(adults=3, children=1, rooms=2)
-                )
-            assert repo.get_by_id("legacy-1") is None
-
-    def test_unknown_booking_raises_key_error(self, tmp_path):
-        with SqliteStore(tmp_path / "t.db") as store:
-            repo = SqliteBookingRepository(store)
-            with pytest.raises(KeyError, match="no-such-id"):
-                repo.set_occupancy("no-such-id", Occupancy(adults=2))

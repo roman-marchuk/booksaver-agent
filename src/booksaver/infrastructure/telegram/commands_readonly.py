@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol
@@ -60,29 +59,6 @@ class IncidentStatusProjection(Protocol):
 
     @property
     def unavailable_evidence(self) -> int: ...
-
-
-@dataclass(frozen=True, slots=True)
-class IncidentStatusCounts:
-    """Validated concrete projection returned by persistence adapters."""
-
-    open_incidents: int
-    pending_alerts: int
-    failed_alerts: int
-    unavailable_evidence: int
-
-    def __post_init__(self) -> None:
-        counts = (
-            self.open_incidents,
-            self.pending_alerts,
-            self.failed_alerts,
-            self.unavailable_evidence,
-        )
-        if any(
-            not isinstance(count, int) or isinstance(count, bool) or count < 0
-            for count in counts
-        ):
-            raise ValueError("incident status counts must be non-negative integers")
 
 
 IncidentStatusProvider = Callable[[], IncidentStatusProjection]

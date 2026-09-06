@@ -577,6 +577,29 @@ Story file paths are relative to `memory-bank/intents/{intent}/units/`.
 |-------|-------|-----|--------|------|
 | `US-174` | Explain price offer rejections | Agentic Browser | Complete | `009-price-rejection-diagnostics/stories/001-explain-price-offer-rejections.md` |
 
+## 024-repository-streamlining
+
+### 001-retired-runtime
+
+| Story | Title | Tag | Status | File |
+|-------|-------|-----|--------|------|
+| `US-178` | Remove retired mutation workflows | Maintenance | Complete | `001-retired-runtime/stories/001-remove-retired-mutation-workflows.md` |
+| `US-179` | Remove legacy monitor scaffolding | Maintenance | Complete | `001-retired-runtime/stories/002-remove-legacy-monitor-scaffolding.md` |
+
+### 002-shared-browser-and-tests
+
+| Story | Title | Tag | Status | File |
+|-------|-------|-----|--------|------|
+| `US-180` | Share browser runtime infrastructure | Maintenance | Complete | `002-shared-browser-and-tests/stories/001-share-browser-runtime-infrastructure.md` |
+| `US-181` | Consolidate test support | Maintenance | Complete | `002-shared-browser-and-tests/stories/002-consolidate-test-support.md` |
+
+### 003-lifecycle-and-branch-hygiene
+
+| Story | Title | Tag | Status | File |
+|-------|-------|-----|--------|------|
+| `US-182` | Align documentation and validation | Maintenance | Complete | `003-lifecycle-and-branch-hygiene/stories/001-align-documentation-and-validation.md` |
+| `US-183` | Delete obsolete branches | Maintenance | Complete | `003-lifecycle-and-branch-hygiene/stories/002-delete-obsolete-branches.md` |
+
 ## Summary
 
 | Intent | Units | Stories | Status |
@@ -605,5 +628,7 @@ Story file paths are relative to `memory-bank/intents/{intent}/units/`.
 | `022-adaptive-booking-browser-resilience` | 3 | 13 | Complete (bolts 041–049) |
 | `023-replaceable-agentic-browser-executor` | 9 | 31 | In construction (bolt 068 complete; price qualification bolt 052 active, bolt 055 blocked) |
 
-All 177 stories (173 complete; remaining stories retain the statuses above)
+| `024-repository-streamlining` | 3 | 6 | Complete locally (bolts 070–072) |
+
+All 183 stories (179 complete; remaining stories retain the statuses above)
 are assigned exactly once.

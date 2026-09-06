@@ -29,6 +29,7 @@ from booksaver.infrastructure.telegram.router import (
     IncomingCallback,
     IncomingCommand,
 )
+from tests.support.bookings import seed_booking
 
 OWNER_CHAT_ID = 555
 
@@ -231,8 +232,8 @@ class TestUsersListing:
             users.set_telegram_username(user.user_id, "alice")
             users.set_encrypted_key(user.user_id, b"PRIVATE KEY SENTINEL")
             owner = users.get_owner()
-            bookings = SqliteBookingRepository(store)
-            bookings.add(
+            seed_booking(
+                store,
                 _booking(
                     "private-booking-id-sentinel",
                     "PRIVATE-CONFIRMATION-SENTINEL",
@@ -240,7 +241,8 @@ class TestUsersListing:
                 ),
                 user_id=user.user_id,
             )
-            bookings.add(
+            seed_booking(
+                store,
                 _booking(
                     "archived-booking-id-sentinel",
                     "ARCHIVED-CONFIRMATION-SENTINEL",
@@ -277,8 +279,6 @@ class TestUsersListing:
         monkeypatch.setattr(
             SqliteBookingRepository, "list_active_for_user", materialization_forbidden
         )
-        monkeypatch.setattr(SqliteBookingRepository, "list_all", materialization_forbidden)
-
         router.dispatch(_cmd(chat_id=OWNER_CHAT_ID, args="users"))
 
         output = sent[0][1]

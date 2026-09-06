@@ -15,6 +15,7 @@ from booksaver.domain.browser_resilience import (
     TerminalBrowserDiagnosis,
     TerminalBrowserReason,
     operator_action_for_reason,
+    provenance_for_terminal,
 )
 from booksaver.domain.check_result import FailureCode, failure_code_for_terminal
 from booksaver.domain.journey import JourneyResult, JourneyStep, StepOutcome
@@ -136,34 +137,6 @@ _DOM_STEP_BY_JOURNEY_STEP = {
 }
 
 
-def _provenance_for_terminal(reason: TerminalBrowserReason) -> DiagnosisProvenance:
-    if reason in {
-        TerminalBrowserReason.PROVIDER_AUTHENTICATION,
-        TerminalBrowserReason.PROVIDER_UNAVAILABLE,
-        TerminalBrowserReason.PROVIDER_RATE_LIMIT,
-    }:
-        return DiagnosisProvenance.PROVIDER_STOP
-    if reason in {
-        TerminalBrowserReason.TIME_LIMIT,
-        TerminalBrowserReason.JOB_COST_LIMIT,
-        TerminalBrowserReason.DAILY_COST_LIMIT,
-        TerminalBrowserReason.MODEL_PRICING_UNAVAILABLE,
-        TerminalBrowserReason.COST_ACCOUNTING_ERROR,
-        TerminalBrowserReason.CLOCK_ROLLBACK,
-    }:
-        return DiagnosisProvenance.BUDGET_STOP
-    if reason in {
-        TerminalBrowserReason.AUTHENTICATION_REQUIRED,
-        TerminalBrowserReason.MFA_REQUIRED,
-        TerminalBrowserReason.BOT_WALL,
-        TerminalBrowserReason.BLOCKED_DESTINATION,
-        TerminalBrowserReason.PROHIBITED_ACTION,
-        TerminalBrowserReason.EXPLICIT_UNAVAILABLE,
-    }:
-        return DiagnosisProvenance.DETERMINISTIC
-    return DiagnosisProvenance.POLICY_STOP
-
-
 def _terminal_diagnosis_from_escalation(
     step: JourneyStep,
     *,
@@ -200,7 +173,7 @@ def _terminal_diagnosis_from_escalation(
     return TerminalBrowserDiagnosis(
         reason=reason,
         step_id=step_id,
-        provenance=_provenance_for_terminal(reason),
+        provenance=provenance_for_terminal(reason),
         confidence=1.0,
         evidence=frozenset(),
         operator_action=operator_action_for_reason(reason),
