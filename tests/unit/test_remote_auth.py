@@ -209,6 +209,84 @@ def test_manager_binds_single_use_launch_to_user_and_captures_once() -> None:
     assert not gate.locked()
 
 
+def test_connection_notice_precedes_immediate_inventory_completion() -> None:
+    runner = ControlledRunner(RemoteBrowserResult(RemoteAuthStatus.SUCCEEDED, cookies_json="[]"))
+    events: list[str] = []
+    completed = threading.Event()
+    gate = threading.Lock()
+
+    def refresh(user_id: int) -> None:
+        assert user_id == 123
+        assert gate.acquire(blocking=False)
+        try:
+            events.append("inventory completed")
+        finally:
+            gate.release()
+            completed.set()
+
+    manager = RemoteAuthenticationManager(
+        _settings(),
+        runner,
+        threading.Event(),
+        lambda _user_id, _raw: events.append("session saved"),
+        lambda _chat_id, text: events.append(text),
+        on_success=refresh,
+        browser_gate=gate,
+    )
+    manager.create(123, 123)
+    runner.release.set()
+    assert completed.wait(1)
+    manager.stop_all()
+
+    assert events == [
+        "session saved",
+        "Booking.com connected successfully. Future checks will use your "
+        "authenticated mobile-web prices.",
+        "inventory completed",
+    ]
+    assert not gate.locked()
+
+
+def test_post_connect_callback_failure_preserves_session_and_redacts_error(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    runner = ControlledRunner(RemoteBrowserResult(RemoteAuthStatus.SUCCEEDED, cookies_json="[]"))
+    messages: list[str] = []
+    completed = threading.Event()
+    gate = threading.Lock()
+
+    def notify(_chat_id: int, text: str) -> None:
+        messages.append(text)
+        if "do not need to reconnect" in text:
+            completed.set()
+
+    def refresh(_user_id: int) -> None:
+        raise RuntimeError("sensitive-session-material")
+
+    manager = RemoteAuthenticationManager(
+        _settings(),
+        runner,
+        threading.Event(),
+        lambda _user_id, _raw: None,
+        notify,
+        on_success=refresh,
+        browser_gate=gate,
+    )
+    launch = manager.create(123, 123)
+    grant = manager.exchange(launch.url.rsplit("/", 1)[-1], 123)
+    runner.release.set()
+    assert completed.wait(1)
+    manager.stop_all()
+
+    assert manager.viewer_state(grant.session_token).status is RemoteAuthStatus.SUCCEEDED
+    assert len(messages) == 2
+    assert "connected successfully" in messages[0]
+    assert "Send /bookings to retry" in messages[1]
+    assert "RuntimeError" in caplog.text
+    assert "sensitive-session-material" not in caplog.text + " ".join(messages)
+    assert not gate.locked()
+
+
 def test_verified_attempt_is_finalizing_and_refuses_viewer_cancel() -> None:
     draft = cast(IncidentDraft, object())
     runner = FinalizingRunner(

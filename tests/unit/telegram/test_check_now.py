@@ -207,7 +207,9 @@ def test_callback_rechecks_scope_acknowledges_and_handles_busy(tmp_path: Path) -
 
     assert coordinator.requests == [(101, booking.booking_id)]
     assert client.answers == ["cb-1"]
-    assert "already running" in client.edits[-1]
+    assert "browser is busy" in client.edits[-1]
+    assert "not started or queued" in client.edits[-1]
+    assert "then send /checknow again" in client.edits[-1]
 
 
 def test_typed_selection_preserves_stopping_response_without_inventory_request(

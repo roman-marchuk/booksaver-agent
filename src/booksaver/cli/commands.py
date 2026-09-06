@@ -16,7 +16,6 @@ from booksaver.application.load_config import load_config
 from booksaver.application.schedule_dispatcher import RandomizedScheduleDispatcher
 from booksaver.daemon import lifecycle
 from booksaver.daemon import scheduler as scheduler_mod
-from booksaver.domain.account_sync import SynchronizationTrigger
 from booksaver.domain.errors import ConfigValidationError
 from booksaver.domain.models import Config
 from booksaver.infrastructure.config.toml_env_source import (
@@ -401,38 +400,10 @@ def cmd_run(args: argparse.Namespace) -> int:
     )
 
     def _synchronize_after_connect(telegram_user_id: int) -> None:
+        from booksaver.infrastructure.telegram.connect_refresh import start_post_connect_refresh
+
         assert telegram_client is not None
-
-        def _completed(completion: Any) -> None:
-            report = completion.report
-            if report is not None and report.succeeded:
-                telegram_client.send_message(
-                    telegram_user_id,
-                    "Booking.com reservations synchronized: "
-                    f"{report.discovered} found, {report.eligible} eligible for "
-                    "price-drop checks. Send /bookings for details.",
-                )
-            else:
-                detail = (
-                    report.failure_detail
-                    if report is not None and report.failure_detail
-                    else "the reservation inventory could not be refreshed"
-                )
-                telegram_client.send_message(
-                    telegram_user_id,
-                    f"Connected, but {detail} Send /bookings to retry.",
-                )
-
-        admission = coordinator.request_inventory(
-            telegram_user_id,
-            _completed,
-            trigger=SynchronizationTrigger.CONNECT,
-        )
-        if admission.value != "accepted":
-            telegram_client.send_message(
-                telegram_user_id,
-                "Connected. Reservation refresh is busy; send /bookings shortly.",
-            )
+        start_post_connect_refresh(telegram_user_id, coordinator, telegram_client.send_message)
 
     if cfg.remote_auth_settings.enabled:
         if telegram_client is None or telegram_token is None:
