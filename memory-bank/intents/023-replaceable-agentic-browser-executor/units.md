@@ -10,6 +10,11 @@ updated: 2026-09-03T23:32:00Z
 
 ## Unit Decomposition
 
+### 009-price-rejection-diagnostics
+
+- Purpose: Versioned, bounded evidence explaining rejected offers and actual room decisions.
+- Story: US-174. Bolt 068. No changes to acceptance, providers, or session authority.
+
 ### 008-connect-refresh-status
 
 - Purpose: Correct post-login notification ordering, busy responses, and positive-only inventory

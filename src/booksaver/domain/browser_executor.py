@@ -563,6 +563,22 @@ def _property_reference_matches(query: TrustedPriceQuery, facts: ObservedQueryFa
     return observed.casefold() == trusted.casefold()
 
 
+def observed_offer_rejection_reasons(offer: ObservedOffer, currency: str) -> tuple[str, ...]:
+    """Return every failed offer-evidence gate in stable order, without observed content."""
+    reasons: list[str] = []
+    if offer.completeness is not EvidenceCompleteness.COMPLETE:
+        reasons.append("incomplete_evidence")
+    if offer.all_in is not AllInEvidence.EXPLICIT:
+        reasons.append("all_in_not_explicit")
+    if offer.refundability is not RefundabilityEvidence.EXPLICIT_REFUNDABLE:
+        reasons.append("refundability_not_explicit")
+    if offer.refundability_text is None:
+        reasons.append("refundability_text_missing")
+    if offer.total.currency != currency:
+        reasons.append("currency_mismatch")
+    return tuple(reasons)
+
+
 def validate_price_observation(
     request: PriceExecutionRequest, result: PriceExecutionResult
 ) -> PriceObservationValidation:
@@ -593,14 +609,9 @@ def validate_price_observation(
     accepted: list[ValidatedObservedOffer] = []
     rejected = 0
     for offer in result.offers:
-        cancellation_text = offer.refundability_text
-        if (
-            offer.completeness is EvidenceCompleteness.COMPLETE
-            and offer.all_in is AllInEvidence.EXPLICIT
-            and offer.refundability is RefundabilityEvidence.EXPLICIT_REFUNDABLE
-            and cancellation_text is not None
-            and offer.total.currency == query.currency
-        ):
+        if not observed_offer_rejection_reasons(offer, query.currency):
+            cancellation_text = offer.refundability_text
+            assert cancellation_text is not None  # Established by the evidence gates above.
             accepted.append(
                 ValidatedObservedOffer(
                     room_label=offer.room_label,
