@@ -108,7 +108,11 @@ def register_check_now_command(
             telegram_user_id, booking.booking_id, _complete
         )
         if admission is ImmediateAdmission.BUSY:
-            return "A live check is already running. Try again after it finishes."
+            return (
+                "BookSaver's browser is busy connecting, refreshing reservations, or "
+                "checking prices. Your price check was not started or queued. "
+                "Wait for the current operation to finish, then send /checknow again."
+            )
         if admission is ImmediateAdmission.STOPPING:
             return "BookSaver is shutting down; no new check was started."
         return f"Checking {booking.property.name} now. I'll send the result here."

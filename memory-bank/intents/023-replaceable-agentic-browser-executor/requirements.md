@@ -12,6 +12,15 @@ checkpoint_4_approved: 2026-08-16T19:18:41Z
 
 # Requirements: Replaceable Agentic Browser Executor
 
+## Connect lifecycle correction (2026-09-06)
+
+FR-23 / US-172: Following a saved login, announce authentication before starting the automatic
+reservation-refresh callback, announce refresh work before it can finish, and distinguish
+discovery from a price check. Busy requests must explicitly report no admission or queuing.
+Recognize accepted positive observations as successful discovery without claiming account-wide
+completeness or deleting unseen reservations. Unit 008 / Bolt 066 implements this correction.
+The user authorized inception, construction, merge, and deployment for the diagnosed issue.
+
 ## Intent Overview
 
 BookSaver becomes the trusted control plane over a replaceable, read-only browser executor. The

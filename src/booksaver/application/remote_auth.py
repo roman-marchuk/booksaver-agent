@@ -474,12 +474,23 @@ class RemoteAuthenticationManager:
             status = attempt.status
 
         if status is RemoteAuthStatus.SUCCEEDED:
-            self._on_success(telegram_user_id)
             self._safe_notify(
                 chat_id,
                 "Booking.com connected successfully. Future checks will use your "
                 "authenticated mobile-web prices.",
             )
+            try:
+                self._on_success(telegram_user_id)
+            except Exception as exc:
+                logger.warning(
+                    "Post-connect reservation refresh failed with %s",
+                    type(exc).__name__,
+                )
+                self._safe_notify(
+                    chat_id,
+                    "Booking.com is connected, but the reservation refresh could not "
+                    "start. Send /bookings to retry; you do not need to reconnect.",
+                )
         elif status is RemoteAuthStatus.EXPIRED:
             self._safe_notify(
                 chat_id,

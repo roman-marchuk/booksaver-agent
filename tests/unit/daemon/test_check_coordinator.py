@@ -81,7 +81,7 @@ from booksaver.domain.model_policy import (
     TokenEnvelope,
     UsdAmount,
 )
-from booksaver.domain.models import Config
+from booksaver.domain.models import Booking, Config
 from booksaver.domain.schedule import (
     ScheduledAdmission,
     ScheduledCheckSlot,
@@ -99,6 +99,7 @@ from booksaver.domain.value_objects import (
     NotificationSettings,
     Occupancy,
     Platform,
+    StayDates,
 )
 from booksaver.infrastructure.crypto.fernet_key_store import FernetKeyStore
 from booksaver.infrastructure.persistence.encrypted_session_store import (
@@ -150,6 +151,15 @@ class NullLLMFactory:
 
 
 _TEST_SESSION_KEY = "wGeBQ1NevJlDl9nkMrKT4uh90w2yK8sBgKYrp4r1pTk="
+
+
+def _future_booking(booking_id: str) -> Booking:
+    # Inventory projection evaluates eligibility against the real observation time.
+    check_in = datetime.now(UTC).date() + timedelta(days=30)
+    return replace(
+        make_booking(booking_id),
+        stay_dates=StayDates(check_in=check_in, check_out=check_in + timedelta(days=4)),
+    )
 
 
 def _complete_sync(
@@ -1222,6 +1232,7 @@ def test_stopping_refuses_new_immediate_work(tmp_path: Path) -> None:
 def test_bookings_request_discovers_and_projects_authenticated_inventory(
     tmp_path: Path,
 ) -> None:
+    stay_dates = _future_booking("inventory").stay_dates
     sessions = _session_repo(tmp_path)
     with SqliteStore(tmp_path / "booksaver.db") as store:
         user = SqliteUserRepository(store).get_or_create_by_telegram_id(101, UserRole.USER)
@@ -1234,7 +1245,7 @@ def test_bookings_request_discovers_and_projects_authenticated_inventory(
         def open_page(self, url: str) -> PageContent:
             return PageContent(
                 url,
-                """
+                f"""
                     <main data-testid="bookings-list"
                           data-inventory-scopes="upcoming,past,cancelled">
                   <article data-testid="reservation-card"
@@ -1243,8 +1254,8 @@ def test_bookings_request_discovers_and_projects_authenticated_inventory(
                     data-status="confirmed"
                     data-property-name="Synchronized Hotel"
                     data-property-url="hotel-ref"
-                    data-checkin="2026-09-01"
-                    data-checkout="2026-09-05"
+                    data-checkin="{stay_dates.check_in.isoformat()}"
+                    data-checkout="{stay_dates.check_out.isoformat()}"
                     data-room-type="Double"
                     data-total-amount="400"
                     data-currency="EUR"
@@ -2025,7 +2036,7 @@ def test_current_agentic_positive_allows_selected_check_with_shared_residual_lim
             acknowledged_at=datetime.now(UTC),
         )
     _seed_session(sessions, invitee.user_id)
-    source_booking = make_booking("agentic-current-positive")
+    source_booking = _future_booking("agentic-current-positive")
     booking_id = _seed_inventory_projection(
         tmp_path,
         user_id=invitee.user_id,
@@ -2114,8 +2125,8 @@ def test_selected_booking_without_current_agentic_positive_is_rejected(
             acknowledged_at=datetime.now(UTC),
         )
     _seed_session(sessions, invitee.user_id)
-    stale_source = make_booking("agentic-stale")
-    current_source = make_booking("agentic-current")
+    stale_source = _future_booking("agentic-stale")
+    current_source = _future_booking("agentic-current")
     stale_booking_id = _seed_inventory_projection(
         tmp_path,
         user_id=invitee.user_id,
@@ -2187,7 +2198,7 @@ def test_selected_check_surfaces_agentic_inventory_terminal_detail(
             acknowledged_at=datetime.now(UTC),
         )
     _seed_session(sessions, invitee.user_id)
-    source = make_booking("agentic-terminal-detail")
+    source = _future_booking("agentic-terminal-detail")
     booking_id = _seed_inventory_projection(
         tmp_path,
         user_id=invitee.user_id,
@@ -2438,8 +2449,8 @@ def test_scheduled_agentic_plan_contains_only_current_run_positive_bookings(
             acknowledged_at=datetime.now(UTC),
         )
     _seed_session(sessions, invitee.user_id)
-    stale_source = make_booking("scheduled-stale")
-    current_source = make_booking("scheduled-current")
+    stale_source = _future_booking("scheduled-stale")
+    current_source = _future_booking("scheduled-current")
     stale_booking_id = _seed_inventory_projection(
         tmp_path,
         user_id=invitee.user_id,
@@ -2507,7 +2518,7 @@ def test_compatibility_scheduler_reuses_inventory_residual_agentic_limits(
         owner = SqliteUserRepository(store).get_owner()
         SqliteUserRepository(store).link_telegram_id(owner.user_id, 101)
     _seed_session(sessions, owner.user_id)
-    source_booking = make_booking("scheduled-shared-residual")
+    source_booking = _future_booking("scheduled-shared-residual")
     current_booking_id = _seed_inventory_projection(
         tmp_path,
         user_id=owner.user_id,

@@ -10,6 +10,12 @@ updated: 2026-09-03T23:32:00Z
 
 ## Unit Decomposition
 
+### 008-connect-refresh-status
+
+- Purpose: Correct post-login notification ordering, busy responses, and positive-only inventory
+  completion messages. No new queue, browser lock, dependency, or database change.
+- Story: US-172. Construction: Bolt 066.
+
 ### 001-agentic-executor-control-plane
 
 - **Purpose**: Define provider-neutral contracts, owner-bound session leases, BookSaver validation,
