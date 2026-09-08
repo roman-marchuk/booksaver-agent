@@ -201,8 +201,7 @@ def test_manager_binds_single_use_launch_to_user_and_captures_once() -> None:
     assert messages == [
         (
             123,
-            "Booking.com connected successfully. Future checks will use your "
-            "authenticated mobile-web prices.",
+            "Booking.com connected successfully. Your login is saved.",
         )
     ]
     assert manager.viewer_state(grant.session_token).status is RemoteAuthStatus.SUCCEEDED
@@ -241,8 +240,7 @@ def test_connection_notice_precedes_immediate_inventory_completion() -> None:
 
     assert events == [
         "session saved",
-        "Booking.com connected successfully. Future checks will use your "
-        "authenticated mobile-web prices.",
+        "Booking.com connected successfully. Your login is saved.",
         "inventory completed",
     ]
     assert not gate.locked()
@@ -332,8 +330,7 @@ def test_verified_attempt_is_finalizing_and_refuses_viewer_cancel() -> None:
     assert sequence == ["capture", "incident"]
     assert manager.viewer_state(grant.session_token).status is RemoteAuthStatus.SUCCEEDED
     assert messages == [
-        "Booking.com connected successfully. Future checks will use your "
-        "authenticated mobile-web prices."
+        "Booking.com connected successfully. Your login is saved."
     ]
 
 
@@ -377,8 +374,7 @@ def test_finalizing_survives_ordinary_expiry_until_capture_commits() -> None:
 
     assert sequence == ["capture", "incident"]
     assert messages == [
-        "Booking.com connected successfully. Future checks will use your "
-        "authenticated mobile-web prices."
+        "Booking.com connected successfully. Your login is saved."
     ]
     assert manager.viewer_state(grant.session_token).status is RemoteAuthStatus.SUCCEEDED
 

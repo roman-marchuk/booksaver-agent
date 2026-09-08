@@ -379,7 +379,15 @@ class SynchronizationReport:
     terminal_diagnosis: TerminalBrowserDiagnosis | None = None
     assisted_diagnoses: tuple[TerminalBrowserDiagnosis, ...] = ()
 
+    upcoming_empty_observed: bool = False
+
     def __post_init__(self) -> None:
+        if self.upcoming_empty_observed and (
+            self.completeness is not InventoryCompleteness.INCOMPLETE
+            or self.discovered != 0
+            or self.failure_code is not None
+        ):
+            raise ValueError("Empty upcoming observation must preserve incomplete scope")
         from .browser_resilience import validate_assisted_diagnoses
 
         validate_assisted_diagnoses(self.assisted_diagnoses)

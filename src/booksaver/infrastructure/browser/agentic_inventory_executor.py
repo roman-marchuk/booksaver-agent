@@ -1538,7 +1538,7 @@ def _bounded_computer_int(
 
 def _terminal_status(raw: object) -> InventoryExecutionStatus:
     status = InventoryExecutionStatus(str(raw))
-    if status is InventoryExecutionStatus.OBSERVED:
+    if status in {InventoryExecutionStatus.OBSERVED, InventoryExecutionStatus.EMPTY_UPCOMING}:
         raise ValueError("terminal tool cannot submit an observation")
     return status
 

@@ -3,7 +3,7 @@ intent: 023-replaceable-agentic-browser-executor
 phase: inception
 status: complete
 created: 2026-08-16T19:18:41Z
-updated: 2026-09-03T23:32:00Z
+updated: 2026-09-08T21:59:19Z
 ---
 
 # System Context: Replaceable Agentic Browser Executor
@@ -159,3 +159,16 @@ flowchart LR
    preserves unseen rows, and permits a price check only for a reservation re-observed in that run.
 7. A Browser Use inventory failure closes that operation without a same-job Stagehand or legacy
    retry; saved last-safe inventory remains visible.
+
+## Caller outcome correction (Unit 010)
+
+Before model execution, code may recognize explicit empty upcoming evidence at the authenticated
+canonical account page. That typed outcome remains incomplete with zero positive reservations;
+it does not grant deletion or monitoring authority. Provider terminal submissions cannot declare
+it. Independently validated current-run positives may survive an unfinished agent run, while
+runtime authentication, safety, and resource-limit failures keep their existing precedence.
+
+Presentation receives only caller-scoped outcomes and saved rows. Operators verify affected
+account states in an isolated copy with real caller routing/consent/session checks and no
+notifications or production writes. Account-specific replay and deployed acceptance remain
+separate evidence; an owner's working booking is not proof for an invitee's different inventory.

@@ -39,6 +39,7 @@ from booksaver.infrastructure.persistence.sqlite_store import (
 
 from .client import TelegramBotClient
 from .command_catalog import help_text
+from .inventory_messages import empty_upcoming_message, refresh_failure_guidance
 from .router import CallbackRouter, CommandRouter, IncomingCallback, IncomingCommand
 
 Reply = Callable[[int, str], None]
@@ -98,23 +99,27 @@ def _format_timedelta(delta: timedelta) -> str:
 _NOT_RECOGNIZED = "You're not recognized by this bot."
 
 
-def _format_session_status(
-    status: UserSessionStatusView, telegram_user_id: int
-) -> list[str]:
-    health = status.health.value.replace("_", " ")
-    lines = [f"Session: {health} (encrypted, per-user Booking.com session)"]
+def _format_status_time(value: datetime) -> str:
+    return value.astimezone(UTC).strftime("%d %b %Y, %H:%M UTC")
+
+
+def _format_session_status(status: UserSessionStatusView) -> list[str]:
     if status.health is UserSessionHealth.READY:
-        lines.append(
-            "Last validated: "
-            f"{status.validated_at.isoformat() if status.validated_at else 'not yet'}"
-        )
-        expires = status.expires_at.isoformat() if status.expires_at else "not reported"
-        lines.append(
-            f"Session expires: {expires}"
-        )
-    else:
-        lines.append("Action: send /connect to sign in to Booking.com securely.")
-    return lines
+        lines = ["Booking.com login: saved"]
+        if status.validated_at is not None:
+            lines.append(
+                f"Last successful session check: {_format_status_time(status.validated_at)}"
+            )
+        if status.expires_at is not None:
+            lines.append(f"Saved login expires: {_format_status_time(status.expires_at)}")
+        return lines
+    health = {
+        UserSessionHealth.MISSING: "not connected",
+        UserSessionHealth.EXPIRED: "expired",
+        UserSessionHealth.REAUTH_REQUIRED: "sign-in needed",
+        UserSessionHealth.INVALID: "needs reconnecting",
+    }[status.health]
+    return [f"Booking.com login: {health}", "Send /connect to sign in to Booking.com."]
 
 
 def _format_price_source(source: PriceSourceProvenance) -> str:
@@ -222,10 +227,10 @@ def register_readonly_commands(
 
         lines.append(
             "Your next scheduled check: "
-            f"{next_slot.planned_at.isoformat() if next_slot else 'pending daily planning'}"
+            f"{_format_status_time(next_slot.planned_at) if next_slot else 'not scheduled yet'}"
         )
 
-        lines.extend(_format_session_status(session_status, cmd.user_id))
+        lines.extend(_format_session_status(session_status))
 
         lines.append(f"Your active bookings: {active_booking_count}")
         if (
@@ -256,34 +261,30 @@ def register_readonly_commands(
         )
         report = completion.report if completion is not None else None
         if not reservations:
+            if report is not None and report.upcoming_empty_observed:
+                return [empty_upcoming_message(has_saved=False)]
             if completion is not None and report is None:
                 return [
-                    "Booking.com refresh was unavailable. No fresh inventory conclusion "
-                    "was made; try /bookings again shortly."
+                    "We couldn't load your reservations from Booking.com. "
+                    "We don't have a saved list to show yet. "
+                    + refresh_failure_guidance(None)
                 ]
-            if report is not None and report.failure_detail:
-                guidance = (
-                    "Send /connect to restore authentication."
-                    if report.failure_code is not None
-                    and report.failure_code.value == "auth_required"
-                    else "Send /setkey to replace it, or /deletekey to use the shared key."
-                    if report.failure_code is not None
-                    and report.failure_code.value == "user_key_invalid"
-                    else "Try /bookings again shortly."
-                )
+            if report is not None and not report.succeeded:
                 return [
-                    "Booking.com refresh failed: "
-                    f"{report.failure_detail}\n"
-                    "No fresh empty-account conclusion was made. "
-                    f"{guidance}"
+                    "We couldn't confirm your reservations with Booking.com. "
+                    "We don't have any saved upcoming reservations to show. "
+                    + refresh_failure_guidance(report.failure_code)
                 ]
             return ["No future reservations found in your Booking.com account."]
 
         if completion is not None and report is None:
             header = (
-                "Booking.com refresh was unavailable; showing the last safe future "
-                "reservations:"
+                "We couldn't update your reservations from Booking.com. "
+                + refresh_failure_guidance(None)
+                + "\nHere are your previously saved upcoming reservations:"
             )
+        elif report is not None and report.upcoming_empty_observed:
+            header = empty_upcoming_message(has_saved=True) + "\nPreviously saved reservations:"
         elif report is None:
             header = "Your future Booking.com reservations:"
         elif report.succeeded:
@@ -291,34 +292,30 @@ def register_readonly_commands(
                 reservation.eligibility.is_eligible for reservation in reservations
             )
             header = (
-                "Future Booking.com reservations refreshed"
-                f"{' with guarded LLM assistance' if report.assisted else ''} "
-                f"({eligible} eligible, {len(reservations) - eligible} ineligible):"
+                "Your reservations are up to date. "
+                f"We can check prices for {eligible} of {len(reservations)} reservations:"
             )
         elif report.accepted_positive_observations:
             eligible = sum(
                 reservation.eligibility.is_eligible for reservation in reservations
             )
             header = (
-                "Future Booking.com reservations refreshed from current positive observations"
-                f"{' with guarded LLM assistance' if report.assisted else ''}. "
-                "Unseen saved reservations were preserved "
-                f"({eligible} eligible, {len(reservations) - eligible} ineligible):"
+                "We updated the reservations we could find on Booking.com. "
+                "Other saved reservations are still here. "
+                f"We can check prices for {eligible} of {len(reservations)} reservations:"
             )
         elif report.completeness is InventoryCompleteness.INCOMPLETE:
             header = (
-                "Booking.com refresh was incomplete; no missing reservations were "
-                "removed. Showing future synchronized observations"
-                f"{' recovered with guarded LLM assistance' if report.assisted else ''}:"
-            )
-        elif report.failure_detail:
-            header = (
-                f"Booking.com refresh failed: {report.failure_detail}\n"
-                "Showing the last safe future reservations:"
+                "We couldn't finish updating your reservations from Booking.com. "
+                "Your saved reservations are still here. "
+                + refresh_failure_guidance(report.failure_code)
+                + "\nHere are the upcoming reservations we have saved:"
             )
         else:
             header = (
-                "Booking.com refresh failed. Showing the last safe future reservations:"
+                "We couldn't update your reservations from Booking.com. "
+                + refresh_failure_guidance(report.failure_code)
+                + "\nHere are your previously saved upcoming reservations:"
             )
 
         entries: list[str] = []
@@ -336,13 +333,13 @@ def register_readonly_commands(
                 else "total unavailable"
             )
             if reservation.eligibility.is_eligible:
-                eligibility = "eligible for price-drop checks"
+                eligibility = "Price checks available"
             else:
                 reasons = ", ".join(
                     _ELIGIBILITY_LABELS[reason]
                     for reason in reservation.eligibility.reasons
                 )
-                eligibility = f"ineligible: {reasons}"
+                eligibility = f"Can't check prices: {reasons}"
             entries.append(
                 f"{name}\n"
                 f"  Confirmation: {item.confirmation_id or 'unavailable'}\n"
@@ -371,7 +368,7 @@ def register_readonly_commands(
 
     def _bookings(cmd: IncomingCommand) -> None:
         if not db_path.exists():
-            reply(cmd.chat_id, "No synchronized reservations yet. Send /connect first.")
+            reply(cmd.chat_id, "No saved reservations yet. Send /connect first.")
             return
         if check_coordinator is not None:
             admission = check_coordinator.request_inventory(
@@ -379,11 +376,11 @@ def register_readonly_commands(
                 lambda completion: _send_inventory(cmd.chat_id, completion),
             )
             if admission is ImmediateAdmission.ACCEPTED:
-                reply(cmd.chat_id, "Refreshing reservations from Booking.com…")
+                reply(cmd.chat_id, "Loading your reservations from Booking.com…")
             elif admission is ImmediateAdmission.BUSY:
                 reply(
                     cmd.chat_id,
-                    "BookSaver is using the browser right now. Try /bookings again shortly.",
+                    "BookSaver is busy. Try /bookings again in a few minutes.",
                 )
             else:
                 reply(cmd.chat_id, "BookSaver is shutting down.")

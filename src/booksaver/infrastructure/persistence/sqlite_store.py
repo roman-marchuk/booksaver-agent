@@ -1095,8 +1095,10 @@ class SqliteAccountReservationRepository:
 
     def latest_run_for_user(self, user_id: int) -> SynchronizationReport | None:
         row = self._store.conn.execute(
-            "SELECT * FROM booking_sync_runs WHERE user_id = ? "
-            "ORDER BY completed_at DESC, rowid DESC LIMIT 1",
+            "SELECT s.*, e.terminal_status AS inventory_terminal_status "
+            "FROM booking_sync_runs s LEFT JOIN agentic_inventory_executions e "
+            "ON e.run_id = s.run_id AND e.user_id = s.user_id WHERE s.user_id = ? "
+            "ORDER BY s.completed_at DESC, s.rowid DESC LIMIT 1",
             (user_id,),
         ).fetchone()
         if row is None:
@@ -1111,6 +1113,12 @@ class SqliteAccountReservationRepository:
             ineligible=row["ineligible_count"],
             failure_code=code,
             failure_detail=row["failure_detail"],
+            upcoming_empty_observed=(
+                row["inventory_terminal_status"] == "empty_upcoming"
+                and row["completeness"] == InventoryCompleteness.INCOMPLETE.value
+                and row["discovered_count"] == 0
+                and code is None
+            ),
             recovery_outcome=(
                 audit.outcome if audit is not None else InventoryRecoveryOutcome.NOT_NEEDED
             ),

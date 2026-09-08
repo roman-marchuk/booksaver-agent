@@ -80,6 +80,7 @@ from booksaver.infrastructure.browser.browser_use_runtime import (
     same_tab_click_destination,
     viewport_coordinates,
 )
+from booksaver.infrastructure.browser.inventory_empty_state import observe_empty_upcoming
 
 logger = logging.getLogger(__name__)
 
@@ -573,6 +574,28 @@ class _EpisodeState:
     safety_violations: set[ExecutorSafetyViolation] = field(default_factory=set)
     refreshed_session: bytes | None = field(default=None, repr=False)
     visible_dom_snapshots: list[str] = field(default_factory=list, repr=False)
+    rejected_identity_count: int = 0
+    attached_facts_count: int = 0
+    rejected_facts_count: int = 0
+    requested_success: bool | None = None
+
+
+
+def _log_submission_diagnostic(execution_id: str, state: _EpisodeState) -> None:
+    """Explain an unfinished episode without exposing identities, facts, or page text."""
+
+    logger.warning(
+        "Browser Use inventory submission diagnostic execution_id=%s "
+        "buffered_identities=%s rejected_identities=%s attached_facts=%s "
+        "rejected_facts=%s requested_success=%s terminal=%s",
+        execution_id,
+        len(state.reservations),
+        state.rejected_identity_count,
+        state.attached_facts_count,
+        state.rejected_facts_count,
+        state.requested_success,
+        state.terminal.value if state.terminal is not None else "none",
+    )
 
 
 def _terminal_status(raw: object) -> InventoryExecutionStatus:
@@ -767,6 +790,29 @@ def _map_browser_use_observation(
     return scopes, tuple(reservations)
 
 
+def _inventory_submission_observation(
+    reservations: list[BrowserUseReservationPayload],
+    *,
+    requested_success: bool,
+) -> BrowserUseObservationPayload | None:
+    """Keep validated positives when the model could not finish the whole inventory scan."""
+
+    try:
+        observation = BrowserUseObservationPayload(
+            # The protected-resource probe already proved authentication. This remains
+            # positive-only evidence; the model cannot assert complete or empty scope.
+            authenticated="true",
+            scopes=[],
+            reservations=list(reservations),
+        )
+        _map_browser_use_observation(observation)
+    except (PermissionError, TypeError, ValueError):
+        if requested_success:
+            raise
+        return None
+    return observation
+
+
 class LocalBrowserUseInventoryRuntime:
     """Capability-specific inventory episode over one shared Browser Use session host."""
 
@@ -879,6 +925,30 @@ class LocalBrowserUseInventoryRuntime:
                     ",".join(sorted(self._host.blocked_network_hosts)) or "none",
                 )
                 return BrowserUseRuntimeResult(InventoryExecutionStatus.PROVIDER_FAILURE)
+
+        # Only a code-observed empty initial page may produce this informational result.
+        # A model cannot report it, and it never authorizes removal of saved reservations.
+        if (
+            semantic_ready
+            and self._state.terminal is None
+            and not self._state.safety_violations
+            and len(session.get_page_targets()) == 1
+            and not self._host.dialog_rejected
+            and await observe_empty_upcoming(session)
+        ):
+            if self._state.terminal is not None:
+                return BrowserUseRuntimeResult(
+                    self._state.terminal,
+                    safety_violations=frozenset(self._state.safety_violations),
+                )
+            if (
+                self._host.dialog_rejected
+                or self._state.safety_violations
+                or len(session.get_page_targets()) != 1
+                or await session.get_current_page_url() != _BROWSER_USE_INVENTORY_ENTRY_URL
+            ):
+                return self._unsafe_result()
+            return BrowserUseRuntimeResult(InventoryExecutionStatus.EMPTY_UPCOMING)
 
         tools: Any = Tools(
             exclude_actions=list(STOCK_ACTIONS), display_files_in_done_text=False
@@ -1171,6 +1241,18 @@ class LocalBrowserUseInventoryRuntime:
                 or params.identity_evidence.strip().casefold()
                 != EvidenceCompleteness.COMPLETE.value
             ):
+                self._state.rejected_identity_count += 1
+                logger.warning(
+                    "Inventory identity submission rejected execution_id=%s "
+                    "confirmation_missing=%s confirmation_oversize=%s "
+                    "scope_valid=%s identity_complete=%s",
+                    request.execution_id,
+                    params.confirmation_id.strip().casefold() in {"", "unknown"},
+                    len(params.confirmation_id.strip()) > 128,
+                    params.scope.strip().casefold() in {scope.value for scope in InventoryScope},
+                    params.identity_evidence.strip().casefold()
+                    == EvidenceCompleteness.COMPLETE.value,
+                )
                 return continued_action_result(
                     ActionResult,
                     "Submission requires the visibly explicit confirmation ID, recognized scope, "
@@ -1206,11 +1288,13 @@ class LocalBrowserUseInventoryRuntime:
             if not await before_action(browser_session):
                 return await stop_unsafe(non_allowlisted=True)
             if not _attach_reservation_facts(self._state.reservations, params):
+                self._state.rejected_facts_count += 1
                 return continued_action_result(
                     ActionResult,
                     "Optional facts were not attached; keep the submitted identity and retry "
                     "only with a matching confirmation and bounded visible fact JSON",
                 )
+            self._state.attached_facts_count += 1
             return continued_action_result(
                 ActionResult,
                 "Visible optional reservation facts were attached",
@@ -1278,26 +1362,23 @@ class LocalBrowserUseInventoryRuntime:
         ) -> Any:
             if not await before_action(browser_session):
                 return await stop_unsafe(non_allowlisted=True)
-            if params.success:
-                try:
-                    observation = BrowserUseObservationPayload(
-                        # Authentication was already proved by BookSaver's protected-resource
-                        # probe; Browser Use does not get authority to restate it.
-                        authenticated="true",
-                        scopes=[],
-                        reservations=list(self._state.reservations),
-                    )
-                    _map_browser_use_observation(observation)
-                except (PermissionError, TypeError, ValueError):
-                    logger.warning(
-                        "Browser Use typed observation rejected execution_id=%s reason=shape",
-                        request.execution_id,
-                    )
-                    return continued_action_result(
-                        ActionResult,
-                        "No valid positive reservation is ready; submit stable identity evidence "
-                        "before calling done with success=true",
-                    )
+            self._state.requested_success = params.success
+            try:
+                observation = _inventory_submission_observation(
+                    self._state.reservations,
+                    requested_success=params.success,
+                )
+            except (PermissionError, TypeError, ValueError):
+                logger.warning(
+                    "Browser Use typed observation rejected execution_id=%s reason=shape",
+                    request.execution_id,
+                )
+                return continued_action_result(
+                    ActionResult,
+                    "No valid positive reservation is ready; submit stable identity evidence "
+                    "before calling done with success=true",
+                )
+            if observation is not None:
                 self._state.observation = observation
                 return ActionResult(
                     is_done=True,
@@ -1344,6 +1425,7 @@ class LocalBrowserUseInventoryRuntime:
             history = await agent.run(max_steps=remaining_steps)
             diagnostic = agent_history_diagnostic(history, _EXPECTED_ACTIONS)
             if self._state.observation is None:
+                _log_submission_diagnostic(request.execution_id, self._state)
                 evidence_diagnostic = _visible_evidence_diagnostic(
                     self._state.visible_dom_snapshots,
                     request.known_reservations,

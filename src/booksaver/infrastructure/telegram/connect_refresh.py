@@ -9,6 +9,8 @@ from booksaver.daemon.check_coordinator import (
 )
 from booksaver.domain.account_sync import SynchronizationTrigger
 
+from .inventory_messages import empty_upcoming_message, refresh_failure_guidance
+
 
 def start_post_connect_refresh(
     telegram_user_id: int,
@@ -19,30 +21,31 @@ def start_post_connect_refresh(
     # its result before this progress message. Authentication was already announced.
     send(
         telegram_user_id,
-        "Preparing to refresh your reservations. "
+        "Loading your reservations from Booking.com. "
         "Please wait for the result before using /checknow.",
     )
 
     def completed(completion: InventoryCompletion) -> None:
         report = completion.report
-        if report is not None and (report.succeeded or report.accepted_positive_observations):
+        if report is not None and report.upcoming_empty_observed:
+            message = empty_upcoming_message(has_saved=bool(completion.reservations))
+        elif report is not None and (report.succeeded or report.accepted_positive_observations):
             preserved = (
                 " Other saved reservations were kept."
                 if report.accepted_positive_observations
                 else ""
             )
             message = (
-                f"Reservation refresh finished: {report.discovered} found, "
-                f"{report.eligible} eligible for price-drop checks.{preserved} "
+                f"Found {report.discovered} reservation{'s' if report.discovered != 1 else ''}. "
+                f"We can check prices for {report.eligible} of them.{preserved} "
                 "Send /checknow to check prices, or /bookings for details."
             )
         else:
             message = (
-                "Your Booking.com login is saved, but the reservation refresh could not "
-                "be completed. Your saved reservations were kept. Send /bookings to retry."
+                "Your Booking.com login was saved, but we couldn't load your reservations. "
+                "Your saved reservations are still here. "
+                + refresh_failure_guidance(report.failure_code if report is not None else None)
             )
-            if report is not None and report.failure_code is not None:
-                message += f" Reason: {report.failure_code.value}."
         send(telegram_user_id, message)
 
     admission = coordinator.request_inventory(
@@ -51,13 +54,12 @@ def start_post_connect_refresh(
     if admission is ImmediateAdmission.BUSY:
         send(
             telegram_user_id,
-            "Your login is saved, but another browser operation is running. "
-            "The reservation refresh was not started or queued. "
-            "Send /bookings after that operation finishes.",
+            "Your login is saved. BookSaver is busy, so we haven't loaded your reservations. "
+            "Please send /bookings again in a few minutes.",
         )
     elif admission is ImmediateAdmission.STOPPING:
         send(
             telegram_user_id,
             "Your login is saved, but BookSaver is shutting down. "
-            "The reservation refresh was not started. Send /bookings once it restarts.",
+            "Please send /bookings once it is running again.",
         )

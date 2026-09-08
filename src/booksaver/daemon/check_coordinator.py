@@ -89,7 +89,7 @@ from booksaver.domain.dom_incident import (
     IncidentProviderState,
 )
 from booksaver.domain.errors import UserKeyInvalidError
-from booksaver.domain.inventory_executor import KnownInventoryReservation
+from booksaver.domain.inventory_executor import InventoryExecutionStatus, KnownInventoryReservation
 from booksaver.domain.model_policy import (
     AdmissionDecision,
     BrowserJobKind,
@@ -2046,6 +2046,13 @@ class CheckCoordinator:
             session_revision=snapshot.metadata.revision_id,
             result=outcome.discovery_result,
             observed_at=observed_at,
+        )
+        report = replace(
+            report,
+            upcoming_empty_observed=(
+                outcome.result.status is InventoryExecutionStatus.EMPTY_UPCOMING
+                and outcome.validation.failure is None
+            ),
         )
         provenance = outcome.result.provenance
         metrics = InventoryExecutionMetrics(

@@ -3,7 +3,7 @@ intent: 023-replaceable-agentic-browser-executor
 phase: inception
 status: construction
 created: 2026-08-14T02:46:26Z
-updated: 2026-09-03T23:30:00Z
+updated: 2026-09-08T21:59:19Z
 checkpoint_1_approved: 2026-08-16T19:18:41Z
 checkpoint_2_approved: 2026-08-16T19:18:41Z
 checkpoint_3_approved: 2026-08-16T19:18:41Z
@@ -11,6 +11,27 @@ checkpoint_4_approved: 2026-08-16T19:18:41Z
 ---
 
 # Requirements: Replaceable Agentic Browser Executor
+
+## Caller inventory outcomes amendment
+
+FR-25 / US-184: Recognize an authenticated, code-observed empty upcoming page as a distinct
+non-destructive outcome and retain valid current-run positive records when account traversal
+ends without full success. Empty remains incomplete and cannot delete unseen saved reservations;
+provider output cannot assert emptiness, and all identity/authentication/safety/limit checks apply.
+
+FR-26 / US-185: Replace technical Telegram loading/status prose with plain descriptions of saved
+login, observed empty page, partial update, saved records, and actionable retry/reconnect/key steps.
+Keep technical failure details in protected diagnostics and never imply inventory or price success
+from authentication alone.
+
+FR-27 / US-186: Verify changed, empty, and unchanged caller account states separately using focused
+regressions and notification-free, caller-scoped isolated replay under the existing browser lease.
+Owner success cannot establish invited-user acceptance; no replay may mutate production truth.
+
+Unit 010 / Bolt 073 owns this narrow correction. The user's standing authorization covers AI-DLC
+implementation and conditional merge/redeployment if the straightforward fix is verified. The
+existing final-head review gate remains mandatory. Bolt 073 construction and both isolated caller
+inventory replays have passed; deployed price/Telegram acceptance is separate.
 
 ## Price rejection diagnostics (2026-09-06)
 

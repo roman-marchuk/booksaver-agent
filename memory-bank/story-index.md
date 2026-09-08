@@ -577,6 +577,14 @@ Story file paths are relative to `memory-bank/intents/{intent}/units/`.
 |-------|-------|-----|--------|------|
 | `US-174` | Explain price offer rejections | Agentic Browser | Complete | `009-price-rejection-diagnostics/stories/001-explain-price-offer-rejections.md` |
 
+### 010-caller-inventory-outcomes: Caller Inventory Outcomes
+
+| Story | Title | Tag | Status | File |
+|-------|-------|-----|--------|------|
+| `US-184` | Recognize safe empty and partial inventory outcomes | Agentic Browser | Complete | `010-caller-inventory-outcomes/stories/001-recognize-safe-empty-and-partial-inventory.md` |
+| `US-185` | Explain caller login and reservation status plainly | Agentic Browser | Complete | `010-caller-inventory-outcomes/stories/002-explain-caller-login-and-reservation-status.md` |
+| `US-186` | Qualify caller outcomes with isolated replay | Agentic Browser | Complete | `010-caller-inventory-outcomes/stories/003-qualify-caller-outcomes-with-isolated-replay.md` |
+
 ## 024-repository-streamlining
 
 ### 001-retired-runtime
@@ -626,9 +634,9 @@ Story file paths are relative to `memory-bank/intents/{intent}/units/`.
 | `020-randomized-daily-booking-checks` | 1 | 3 | Complete (bolt 037; 1038 tests) |
 | `021-booking-browser-llm-recovery` | 2 | 8 | Complete (bolts 038–040; 1230 tests) |
 | `022-adaptive-booking-browser-resilience` | 3 | 13 | Complete (bolts 041–049) |
-| `023-replaceable-agentic-browser-executor` | 9 | 31 | In construction (bolt 068 complete; price qualification bolt 052 active, bolt 055 blocked) |
+| `023-replaceable-agentic-browser-executor` | 10 | 34 | In construction (bolt 073 complete; price qualification bolt 052 active, bolt 055 blocked) |
 
 | `024-repository-streamlining` | 3 | 6 | Complete locally (bolts 070–072) |
 
-All 183 stories (179 complete; remaining stories retain the statuses above)
+All 186 stories (182 complete; remaining stories retain the statuses above)
 are assigned exactly once.
