@@ -429,3 +429,12 @@ def test_owner_bound_price_accepts_same_outer_residual_limits() -> None:
     )
     assert fake.requests[0].limits is limits
     assert fake.requests[0].session_lease.subject_id == booking.booking_id
+
+
+def test_code_observed_empty_inventory_stays_incomplete_and_does_not_invent_positives():
+    result = InventoryExecutionResult(status=InventoryExecutionStatus.EMPTY_UPCOMING)
+    validation = InventoryObservationValidator(clock=lambda: NOW).validate(_request(), result)
+    discovery = validation.to_discovery_result()
+    assert discovery.completeness is InventoryCompleteness.INCOMPLETE
+    assert discovery.failure_code is None
+    assert discovery.observations == ()

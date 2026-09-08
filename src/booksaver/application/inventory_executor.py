@@ -137,6 +137,10 @@ class InventoryObservationValidator:
                 page_count=page_count,
                 detail_count=detail_count,
             )
+        if result.status is InventoryExecutionStatus.EMPTY_UPCOMING:
+            # Informational only: no positives and INCOMPLETE reconciliation preserve all
+            # saved reservations. The model is not allowed to submit this terminal status.
+            return InventoryObservationValidation()
         if result.status is not InventoryExecutionStatus.OBSERVED:
             code, detail = _terminal_failure(result.status)
             return self._failure(

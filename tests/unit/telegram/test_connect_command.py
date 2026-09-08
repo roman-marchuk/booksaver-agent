@@ -92,8 +92,8 @@ def test_connect_uses_telegram_web_app_button_without_chat_credentials() -> None
     assert manager.created == [(123, 123)]
     text = sent[0][1]
     assert "Booking.com email and password" in text
-    assert "Google, Apple, or another external provider is disabled" in text
-    assert "never asks for your password in Telegram chat" in text
+    assert "Google, Apple, and other sign-in services" in text
+    assert "Never send your password in this chat" in text
     assert "password=" not in text
     markup = sent[0][2]
     assert isinstance(markup, dict)
@@ -154,7 +154,7 @@ def test_invitee_consent_is_recorded_before_secure_login_launch() -> None:
     assert acknowledgements == [123]
     assert manager.created == [(123, 123)]
     assert client.answers == ["consent-1"]
-    assert "Open the secure login" in client.edits[0][2]
+    assert "Tap the button below to sign in" in client.edits[0][2]
 
 
 def test_reconnect_callback_is_acknowledged_and_replaces_prompt() -> None:
@@ -168,9 +168,9 @@ def test_reconnect_callback_is_acknowledged_and_replaces_prompt() -> None:
     assert client.edits[0][:3] == (
         123,
         8,
-        "Open the secure login below and sign in with your Booking.com email and password. "
-        "Signing in with Google, Apple, or another external provider is disabled. "
-        "The link expires shortly; BookSaver never asks for your password in Telegram chat.",
+        "Tap the button below to sign in with your Booking.com email and password. "
+        "Google, Apple, and other sign-in services aren't supported here. "
+        "The link expires soon. Never send your password in this chat.",
     )
 
 
@@ -206,7 +206,7 @@ def test_reconnect_notifier_scopes_delivery_and_applies_cooldown(tmp_path: Path)
     assert len(client.sent) == 1
     chat_id, text, markup = client.sent[0]
     assert chat_id == 222
-    assert "missing or expired" in text
+    assert "sign in to Booking.com again" in text
     assert markup == {
         "inline_keyboard": [[{"text": "Reconnect Booking.com", "callback_data": "connect:start"}]]
     }

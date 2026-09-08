@@ -66,6 +66,7 @@ REQUIRED_INVENTORY_SCOPES = frozenset(InventoryScope)
 
 class InventoryExecutionStatus(Enum):
     OBSERVED = "observed"
+    EMPTY_UPCOMING = "empty_upcoming"
     SESSION_UNAVAILABLE = "session_unavailable"
     SIGNED_OUT = "signed_out"
     MFA_REQUIRED = "mfa_required"

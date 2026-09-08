@@ -52,9 +52,9 @@ def _launch_message(
     except (RemoteAuthBusy, RemoteAuthUnavailable) as exc:
         return str(exc), None
     text = (
-        "Open the secure login below and sign in with your Booking.com email and password. "
-        "Signing in with Google, Apple, or another external provider is disabled. "
-        "The link expires shortly; BookSaver never asks for your password in Telegram chat."
+        "Tap the button below to sign in with your Booking.com email and password. "
+        "Google, Apple, and other sign-in services aren't supported here. "
+        "The link expires soon. Never send your password in this chat."
     )
     return (
         text,
@@ -183,8 +183,7 @@ class ReconnectNotifier:
                 return
             self._client.send_message(
                 chat_id,
-                "Your Booking.com connection is missing or expired. Reconnect to resume "
-                "authenticated mobile-web price checks.",
+                "Please sign in to Booking.com again so we can keep checking your prices.",
                 reply_markup={
                     "inline_keyboard": [
                         [{"text": "Reconnect Booking.com", "callback_data": "connect:start"}]

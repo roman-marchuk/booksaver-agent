@@ -429,3 +429,52 @@ def test_complete_agentic_positive_fills_only_missing_safe_facts_and_projects(
             user_id=owner.user_id,
             run_id=report.run_id,
         ) == (persisted.monitoring_booking_id,)
+
+
+def test_empty_upcoming_observation_survives_reload_without_removing_saved_booking(tmp_path):
+    with SqliteStore(tmp_path / "booksaver.db") as store:
+        owner = SqliteUserRepository(store).get_owner()
+        repo = SqliteAccountReservationRepository(store)
+        repo.reconcile(
+            user_id=owner.user_id, run_id="saved-before-empty",
+            trigger=SynchronizationTrigger.BOOKINGS, session_revision="session-1",
+            result=InventoryDiscoveryResult((_reservation(),), InventoryCompleteness.INCOMPLETE),
+            observed_at=NOW,
+        )
+        before = repo.list_for_user(owner.user_id)
+        repo.reconcile(
+            user_id=owner.user_id, run_id="empty-upcoming",
+            trigger=SynchronizationTrigger.BOOKINGS, session_revision="session-1",
+            result=InventoryDiscoveryResult((), InventoryCompleteness.INCOMPLETE),
+            observed_at=NOW + timedelta(minutes=1),
+        )
+        SqliteInventoryExecutionMetricsRepository(store).record(replace(
+            _metrics(owner.user_id, run_id="empty-upcoming"), terminal_status="empty_upcoming",
+            accepted_count=0, rejected_count=0, scope_count=0, page_count=0, detail_count=0,
+        ))
+        after = repo.list_for_user(owner.user_id)
+        report = repo.latest_run_for_user(owner.user_id)
+        assert report is not None and report.upcoming_empty_observed
+        assert not report.succeeded
+        assert after == before
+        assert after[0].monitoring_booking_id is not None
+
+
+def test_empty_raw_terminal_cannot_mask_failed_validation_on_reload(tmp_path):
+    with SqliteStore(tmp_path / "booksaver.db") as store:
+        owner = SqliteUserRepository(store).get_owner()
+        repo = SqliteAccountReservationRepository(store)
+        repo.reconcile(
+            user_id=owner.user_id, run_id="expired-empty",
+            trigger=SynchronizationTrigger.BOOKINGS, session_revision="session-1",
+            result=InventoryDiscoveryResult.failed(
+                SynchronizationFailureCode.NAVIGATION_FAILED, "Execution limit exceeded"
+            ), observed_at=NOW,
+        )
+        SqliteInventoryExecutionMetricsRepository(store).record(replace(
+            _metrics(owner.user_id, run_id="expired-empty"), terminal_status="empty_upcoming",
+            accepted_count=0, rejected_count=0, scope_count=0, page_count=0, detail_count=0,
+        ))
+        report = repo.latest_run_for_user(owner.user_id)
+        assert report is not None and not report.upcoming_empty_observed
+        assert report.failure_code is SynchronizationFailureCode.NAVIGATION_FAILED

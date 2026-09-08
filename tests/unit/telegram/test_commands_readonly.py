@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
 from cryptography.fernet import Fernet
 
 from booksaver.daemon.check_coordinator import (
@@ -290,8 +292,8 @@ def test_status_reports_only_callers_next_randomized_slot(tmp_path: Path) -> Non
     router.dispatch(_cmd("/status"))
 
     text = sent[0][1]
-    assert f"Your next scheduled check: {caller_at.isoformat()}" in text
-    assert foreign_at.isoformat() not in text
+    assert f"Your next scheduled check: {caller_at:%d %b %Y, %H:%M UTC}" in text
+    assert f"{foreign_at:%d %b %Y, %H:%M UTC}" not in text
 
 
 def test_status_reports_pending_when_daily_schedule_is_not_planned(
@@ -302,7 +304,7 @@ def test_status_reports_pending_when_daily_schedule_is_not_planned(
 
     router.dispatch(_cmd("/status"))
 
-    assert "Your next scheduled check: pending daily planning" in sent[0][1]
+    assert "Your next scheduled check: not scheduled yet" in sent[0][1]
 
 
 def test_status_reports_missing_caller_session_with_connect_action(
@@ -312,8 +314,8 @@ def test_status_reports_missing_caller_session_with_connect_action(
     _register_caller(db_path, telegram_id=1)
     router.dispatch(_cmd("/status"))
     text = sent[0][1]
-    assert "Session: missing (encrypted, per-user Booking.com session)" in text
-    assert "Action: send /connect to sign in to Booking.com securely." in text
+    assert "Booking.com login: not connected" in text
+    assert "Send /connect to sign in to Booking.com." in text
     assert "public rates" not in text
     assert "global" not in text
 
@@ -343,8 +345,10 @@ def test_status_reports_ready_caller_session_without_import_fallback(
     router.dispatch(_cmd("/status"))
 
     text = sent[0][1]
-    assert "Session: ready (encrypted, per-user Booking.com session)" in text
-    assert "Last validated: not yet" in text
+    assert "Booking.com login: saved" in text
+    assert "Last validated" not in text
+    assert "Last successful session check" not in text
+    assert "Saved login expires:" in text
     assert "booksaver auth import" not in text
 
 
@@ -470,7 +474,7 @@ def test_bookings_only_lists_future_upcoming_reservations(tmp_path: Path) -> Non
     text = "\n".join(message for _chat_id, message in sent)
     assert "CONF-future-eligible" in text
     assert "CONF-future-ineligible" in text
-    assert "ineligible: non-refundable" in text
+    assert "Can't check prices: non-refundable" in text
     assert "CONF-past" not in text
     assert "CONF-current" not in text
     assert "CONF-cancelled" not in text
@@ -479,7 +483,7 @@ def test_bookings_only_lists_future_upcoming_reservations(tmp_path: Path) -> Non
 def test_bookings_with_no_database_reports_none_registered(tmp_path: Path) -> None:
     _db, router, sent, _sched = _setup(tmp_path)
     router.dispatch(_cmd("/bookings"))
-    assert sent[0][1] == "No synchronized reservations yet. Send /connect first."
+    assert sent[0][1] == "No saved reservations yet. Send /connect first."
 
 
 def test_bookings_unexpected_worker_failure_is_not_rendered_as_empty_account(
@@ -506,7 +510,7 @@ def test_bookings_unexpected_worker_failure_is_not_rendered_as_empty_account(
     router.dispatch(_cmd("/bookings"))
 
     text = "\n".join(message for _chat_id, message in sent)
-    assert "refresh was unavailable" in text
+    assert "couldn't load your reservations" in text
     assert "No future reservations found" not in text
 
 
@@ -550,10 +554,85 @@ def test_bookings_reports_accepted_positive_only_refresh_as_success(
     router.dispatch(_cmd("/bookings"))
 
     text = "\n".join(message for _chat_id, message in sent)
-    assert "refreshed from current positive observations" in text
-    assert "Unseen saved reservations were preserved" in text
-    assert "refresh was incomplete" not in text
+    assert "We updated the reservations we could find" in text
+    assert "Other saved reservations are still here" in text
+    assert "couldn't finish updating" not in text
     assert "refresh failed" not in text
+
+
+@pytest.mark.parametrize(
+    ("empty_observed", "saved_kind"),
+    [
+        (False, "current"),
+        (False, "dateless"),
+        (True, "completed"),
+        (True, "current"),
+        (True, "dateless"),
+    ],
+)
+def test_bookings_hidden_saved_rows_do_not_change_successful_refresh_outcome(
+    tmp_path: Path, empty_observed: bool, saved_kind: str,
+) -> None:
+    db_path = tmp_path / "booksaver.db"
+    user_id = _register_caller(db_path, telegram_id=1)
+    today = datetime.now(UTC).date()
+    observation = _observation(_booking("hidden", check_in=today))
+    if saved_kind == "dateless":
+        observation = replace(observation, check_in=None, check_out=None)
+    elif saved_kind == "completed":
+        observation = replace(
+            observation,
+            lifecycle=ReservationLifecycle.COMPLETED,
+            check_in=today - timedelta(days=7),
+            check_out=today - timedelta(days=3),
+        )
+    _sync_observations(db_path, user_id, (observation,))
+    with SqliteStore(db_path) as store:
+        reservations = tuple(SqliteAccountReservationRepository(store).list_for_user(user_id))
+    assert len(reservations) == 1
+    report = SynchronizationReport(
+        run_id="sync-hidden-rows",
+        completeness=InventoryCompleteness.INCOMPLETE,
+        discovered=0 if empty_observed else 1,
+        eligible=0,
+        ineligible=0 if empty_observed else 1,
+        upcoming_empty_observed=empty_observed,
+    )
+    router = CommandRouter()
+    sent: list[tuple[int, str]] = []
+
+    class Coordinator:
+        def request_inventory(self, _user_id, callback):
+            callback(InventoryCompletion(report, reservations))
+            return ImmediateAdmission.ACCEPTED
+
+    register_readonly_commands(
+        router=router,
+        reply=lambda chat_id, text: sent.append((chat_id, text)),
+        db_path=db_path,
+        scheduler=Scheduler(),
+        check_coordinator=Coordinator(),  # type: ignore[arg-type]
+    )
+
+    router.dispatch(_cmd("/bookings"))
+
+    text = "\n".join(message for _chat_id, message in sent)
+    assert "couldn't" not in text
+    assert "failed" not in text
+    assert "Try /bookings" not in text
+    assert "No future reservations found" not in text
+    assert "CONF-hidden" not in text  # Display filtering remains unchanged.
+    if empty_observed:
+        assert "Booking.com shows no upcoming reservations" in text
+        assert "Your previously saved reservations are still here" in text
+        assert "check which Booking.com account" not in text
+    else:
+        assert "We updated the reservations we could find" in text
+        assert "future check-in dates" in text
+        assert "shows no upcoming reservations" not in text
+    with SqliteStore(db_path) as store:
+        preserved = tuple(SqliteAccountReservationRepository(store).list_for_user(user_id))
+    assert preserved == reservations
 
 
 def test_bookings_keeps_incomplete_warning_for_ambiguous_positive_run(
@@ -597,15 +676,30 @@ def test_bookings_keeps_incomplete_warning_for_ambiguous_positive_run(
     router.dispatch(_cmd("/bookings"))
 
     text = "\n".join(message for _chat_id, message in sent)
-    assert "refresh was incomplete" in text
-    assert "refreshed from current positive observations" not in text
+    assert "couldn't finish updating" in text
+    assert "We updated the reservations we could find" not in text
 
 
-def test_bookings_personal_key_failure_shows_key_recovery_guidance(
-    tmp_path: Path,
+@pytest.mark.parametrize("has_saved_reservations", [False, True])
+@pytest.mark.parametrize(
+    "failure_code, expected_action",
+    [
+        (SynchronizationFailureCode.USER_KEY_INVALID, "/setkey"),
+        (SynchronizationFailureCode.AUTH_REQUIRED, "/connect"),
+        (SynchronizationFailureCode.NAVIGATION_FAILED, "/bookings"),
+    ],
+)
+def test_bookings_failure_shows_plain_guidance_without_internal_details(
+    tmp_path: Path, has_saved_reservations, failure_code, expected_action,
 ) -> None:
     db_path = tmp_path / "booksaver.db"
-    _register_caller(db_path, telegram_id=1)
+    user_id = _register_caller(db_path, telegram_id=1)
+    if has_saved_reservations:
+        _sync_booking(db_path, user_id, _booking())
+    with SqliteStore(db_path) as store:
+        reservations = tuple(
+            SqliteAccountReservationRepository(store).list_for_user(user_id)
+        )
     router = CommandRouter()
     sent: list[tuple[int, str]] = []
 
@@ -619,9 +713,10 @@ def test_bookings_personal_key_failure_shows_key_recovery_guidance(
                         discovered=0,
                         eligible=0,
                         ineligible=0,
-                        failure_code=SynchronizationFailureCode.USER_KEY_INVALID,
-                        failure_detail="Your personal LLM key could not be used.",
-                    )
+                        failure_code=failure_code,
+                        failure_detail="INTERNAL DETAIL MUST NOT BE SHOWN",
+                    ),
+                    reservations,
                 )
             )
             return ImmediateAdmission.ACCEPTED
@@ -637,8 +732,16 @@ def test_bookings_personal_key_failure_shows_key_recovery_guidance(
     router.dispatch(_cmd("/bookings"))
 
     text = "\n".join(message for _chat_id, message in sent)
-    assert "/setkey" in text
-    assert "/deletekey" in text
+    assert expected_action in text
+    if failure_code is SynchronizationFailureCode.USER_KEY_INVALID:
+        assert "/deletekey" in text
+    if failure_code is SynchronizationFailureCode.NAVIGATION_FAILED:
+        assert "/connect" not in text
+    assert "INTERNAL DETAIL" not in text
+    assert failure_code.value not in text
+    if has_saved_reservations:
+        assert "previously saved upcoming reservations" in text
+        assert "CONF-" in text
     assert "No future reservations found" not in text
 
 

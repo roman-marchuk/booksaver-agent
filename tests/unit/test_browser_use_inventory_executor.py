@@ -18,6 +18,7 @@ import pytest
 from PIL import Image
 from pydantic import BaseModel
 
+import booksaver.infrastructure.browser.browser_use_inventory_executor as inventory_adapter
 import booksaver.infrastructure.browser.browser_use_runtime as runtime_adapter
 from booksaver.application.async_runner import AsyncLoopRunner
 from booksaver.application.browser_executor import ExecutionMeter, InMemorySessionLeaseBroker
@@ -61,7 +62,10 @@ from booksaver.infrastructure.browser.browser_use_inventory_executor import (
     LocalBrowserUseInventoryRuntime,
     _attach_reservation_facts,
     _current_visible_saved_reservation,
+    _EpisodeState,
     _inventory_agent_task,
+    _inventory_submission_observation,
+    _log_submission_diagnostic,
     _map_browser_use_observation,
     _map_observation,
     _record_reservation_identity,
@@ -697,6 +701,305 @@ def test_optional_fact_failure_preserves_submitted_identity() -> None:
     assert len(reservations) == 1
     assert reservations[0].confirmation_id == "6992391225"
     assert reservations[0].property_name == "unknown"
+
+
+def test_failed_scan_preserves_multiple_sparse_positives_after_optional_fact_rejection() -> None:
+    reservations: list[BrowserUseReservationPayload] = []
+    for confirmation in ("FIRST-NEW-BOOKING", "SECOND-NEW-BOOKING"):
+        _record_reservation_identity(
+            reservations,
+            BrowserUseReservationSubmission(
+                confirmation_id=confirmation,
+                scope="upcoming",
+                identity_evidence="complete",
+            ),
+        )
+    assert not _attach_reservation_facts(
+        reservations,
+        BrowserUseReservationFactsSubmission(
+            confirmation_id="FIRST-NEW-BOOKING",
+            facts_json='{"unexpected":"not accepted"}',
+        ),
+    )
+    original = [item.model_dump() for item in reservations]
+
+    observation = _inventory_submission_observation(reservations, requested_success=False)
+
+    assert observation is not None
+    scopes, positives = _map_browser_use_observation(observation)
+    assert {item.confirmation_id for item in positives} == {
+        "FIRST-NEW-BOOKING", "SECOND-NEW-BOOKING",
+    }
+    assert all(item.check_in is None and item.booked_total is None for item in positives)
+    assert all(scope.completeness is EvidenceCompleteness.INCOMPLETE for scope in scopes)
+    assert all(scope.explicit_empty is False for scope in scopes)
+    assert [item.model_dump() for item in reservations] == original
+
+
+@pytest.mark.parametrize("reservations", [[], [BrowserUseReservationPayload()]])
+def test_terminal_request_without_valid_positives_never_becomes_an_observation(
+    reservations: list[BrowserUseReservationPayload],
+) -> None:
+    assert _inventory_submission_observation(reservations, requested_success=False) is None
+    with pytest.raises(ValueError):
+        _inventory_submission_observation(reservations, requested_success=True)
+
+
+@pytest.mark.parametrize(
+    ("prior_terminal", "unsafe_before_done"),
+    [
+        (None, False),
+        (InventoryExecutionStatus.UNSAFE_ACTION, False),
+        (InventoryExecutionStatus.ACTION_LIMIT, False),
+        (InventoryExecutionStatus.COST_LIMIT, False),
+        (InventoryExecutionStatus.TIMEOUT, False),
+        (None, True),
+    ],
+)
+def test_done_false_keeps_accepted_identity_without_overriding_code_terminal(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    prior_terminal: InventoryExecutionStatus | None,
+    unsafe_before_done: bool,
+) -> None:
+    import browser_use
+
+    class _Session:
+        cdp_url = None
+        current_url = _BROWSER_USE_INVENTORY_ENTRY_URL
+
+        async def navigate_to(self, _url: str, **_kwargs: Any) -> None:
+            pass
+
+        async def get_current_page_url(self) -> str:
+            return self.current_url
+
+        def get_page_targets(self) -> list[object]:
+            return [object()]
+
+        async def get_browser_state_summary(self, **_kwargs: Any) -> Any:
+            return SimpleNamespace(
+                dom_state=SimpleNamespace(llm_representation=lambda: "Upcoming reservations")
+            )
+
+    class _Tools:
+        def __init__(self, **_kwargs: Any) -> None:
+            self.registry = SimpleNamespace(registry=SimpleNamespace(actions={}))
+
+        def action(self, *_args: Any, **_kwargs: Any) -> Any:
+            def register(function: Any) -> Any:
+                self.registry.registry.actions[function.__name__] = function
+                return function
+            return register
+
+    session = _Session()
+    runtime = LocalBrowserUseInventoryRuntime()
+    request = _request(InMemorySessionLeaseBroker())
+
+    async def start() -> Any:
+        return SimpleNamespace(
+            browser=session, viewport={"width": 360, "height": 800}, file_system_dir=tmp_path,
+        )
+
+    async def verify(_request: Any, _session: Any) -> None:
+        return None
+
+    def create_agent(_agent_type: Any, **kwargs: Any) -> Any:
+        actions = kwargs["tools"].registry.registry.actions
+
+        async def run(**_kwargs: Any) -> Any:
+            await actions["submit_inventory_observation"](
+                BrowserUseReservationSubmission(
+                    confirmation_id="NEW-VISIBLE-CONFIRMATION",
+                    scope="upcoming",
+                    identity_evidence="complete",
+                ),
+                session,
+            )
+            runtime._state.terminal = prior_terminal
+            if unsafe_before_done:
+                session.current_url = "https://outside-booking.example/"
+            await actions["done"](BrowserUseTerminalPayload(success=False), session)
+            return SimpleNamespace(history=[])
+
+        return SimpleNamespace(run=run)
+
+    monkeypatch.setattr(browser_use, "Tools", _Tools)
+    monkeypatch.setattr(
+        inventory_adapter, "budgeted_model_type",
+        lambda *_args: lambda **_kwargs: SimpleNamespace(),
+    )
+    monkeypatch.setattr(
+        runtime, "_host",
+        SimpleNamespace(
+            start=start, verify_authentication=verify, create_agent=create_agent,
+            dialog_rejected=False,
+        ),
+    )
+
+    result = asyncio.run(runtime.execute(
+        request, api_key="unused", budget=_budget(), meter=ExecutionMeter(request.limits),
+    ))
+
+    expected_status = (
+        InventoryExecutionStatus.UNSAFE_ACTION
+        if unsafe_before_done
+        else prior_terminal or InventoryExecutionStatus.OBSERVED
+    )
+    assert result.status is expected_status
+    assert runtime._state.requested_success is (None if unsafe_before_done else False)
+    if expected_status is InventoryExecutionStatus.OBSERVED:
+        assert len(result.reservations) == 1
+        assert result.reservations[0].confirmation_id == "NEW-VISIBLE-CONFIRMATION"
+        assert result.scopes[0].completeness is EvidenceCompleteness.INCOMPLETE
+    else:
+        assert result.reservations == ()
+
+
+@pytest.mark.parametrize(
+    ("auth_status", "initial_url", "target_count", "expected_status", "post_read_event"),
+    [
+        (None, _BROWSER_USE_INVENTORY_ENTRY_URL, 1, InventoryExecutionStatus.EMPTY_UPCOMING, None),
+        (
+            BrowserUseSessionStatus.SIGNED_OUT, _BROWSER_USE_INVENTORY_ENTRY_URL, 1,
+            InventoryExecutionStatus.SIGNED_OUT, None,
+        ),
+        (
+            BrowserUseSessionStatus.TIMEOUT, _BROWSER_USE_INVENTORY_ENTRY_URL, 1,
+            InventoryExecutionStatus.TIMEOUT, None,
+        ),
+        (
+            None, "https://outside-booking.example/", 1,
+            InventoryExecutionStatus.UNSAFE_ACTION, None,
+        ),
+        (None, _BROWSER_USE_INVENTORY_ENTRY_URL, 2, InventoryExecutionStatus.UNSAFE_ACTION, None),
+        (
+            None, _BROWSER_USE_INVENTORY_ENTRY_URL, 1,
+            InventoryExecutionStatus.COST_LIMIT, "cost_limit",
+        ),
+        (
+            None, _BROWSER_USE_INVENTORY_ENTRY_URL, 1,
+            InventoryExecutionStatus.TIMEOUT, "timeout",
+        ),
+        (
+            None, _BROWSER_USE_INVENTORY_ENTRY_URL, 1,
+            InventoryExecutionStatus.ACTION_LIMIT, "action_limit",
+        ),
+        (
+            None, _BROWSER_USE_INVENTORY_ENTRY_URL, 1,
+            InventoryExecutionStatus.UNSAFE_ACTION, "dialog",
+        ),
+        (
+            None, _BROWSER_USE_INVENTORY_ENTRY_URL, 1,
+            InventoryExecutionStatus.UNSAFE_ACTION, "violation",
+        ),
+        (
+            None, _BROWSER_USE_INVENTORY_ENTRY_URL, 1,
+            InventoryExecutionStatus.UNSAFE_ACTION, "tab",
+        ),
+        (
+            None, _BROWSER_USE_INVENTORY_ENTRY_URL, 1,
+            InventoryExecutionStatus.UNSAFE_ACTION, "url",
+        ),
+    ],
+)
+def test_explicit_empty_initial_page_is_code_observed_after_authentication_and_safety(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    auth_status: BrowserUseSessionStatus | None,
+    initial_url: str,
+    target_count: int,
+    expected_status: InventoryExecutionStatus,
+    post_read_event: str | None,
+) -> None:
+    navigation_calls: list[str] = []
+    rendered_reads: list[str] = []
+
+    class _Session:
+        def __init__(self) -> None:
+            self.current_url = initial_url
+            self.target_count = target_count
+            self.cdp_client = SimpleNamespace(
+                send=SimpleNamespace(Runtime=SimpleNamespace(evaluate=self.evaluate)),
+            )
+
+        async def evaluate(self, *, params: dict[str, Any], session_id: str) -> Any:
+            assert session_id == "current-page-session"
+            assert "document.body?.innerText" in params["expression"]
+            rendered_reads.append(session_id)
+            # Evidence was read, but a code-owned stop can arrive during the await.
+            if post_read_event in {"cost_limit", "timeout", "action_limit"}:
+                runtime._state.terminal = InventoryExecutionStatus(post_read_event)
+            elif post_read_event == "dialog":
+                runtime._host.dialog_rejected = True
+            elif post_read_event == "violation":
+                runtime._state.safety_violations.add(
+                    ExecutorSafetyViolation.PROHIBITED_ACTION_EXECUTED,
+                )
+            elif post_read_event == "tab":
+                self.target_count = 2
+            elif post_read_event == "url":
+                self.current_url = "https://outside-booking.example/"
+            return {"result": {"value": json.dumps({
+                "url": initial_url,
+                "text": (
+                    "Bookings & Trips Active Past Canceled You haven’t started any trips yet. "
+                    "Once you make a booking, it'll appear here."
+                ),
+            })}}
+
+        async def get_current_page(self) -> Any:
+            async def ensure_session() -> str:
+                return "current-page-session"
+            return SimpleNamespace(_ensure_session=ensure_session)
+
+        async def navigate_to(self, url: str, **_kwargs: Any) -> None:
+            navigation_calls.append(url)
+
+        async def get_current_page_url(self) -> str:
+            return self.current_url
+
+        def get_page_targets(self) -> list[object]:
+            return [object() for _ in range(self.target_count)]
+
+        async def get_browser_state_summary(self, **_kwargs: Any) -> Any:
+            # The real serializer omitted the rendered empty-state sentences.
+            return SimpleNamespace(dom_state=SimpleNamespace(
+                llm_representation=lambda: "Bookings & Trips Active Past Canceled",
+            ))
+
+    async def start() -> Any:
+        return SimpleNamespace(
+            browser=_Session(), viewport={"width": 360, "height": 800}, file_system_dir=tmp_path,
+        )
+
+    async def verify(_request: Any, _session: Any) -> BrowserUseSessionStatus | None:
+        return auth_status
+
+    def unexpected_model(*_args: Any, **_kwargs: Any) -> Any:
+        pytest.fail("An explicit empty page or earlier auth/safety stop must not construct a model")
+
+    runtime = LocalBrowserUseInventoryRuntime()
+    monkeypatch.setattr(inventory_adapter, "budgeted_model_type", unexpected_model)
+    monkeypatch.setattr(runtime, "_host", SimpleNamespace(
+        start=start, verify_authentication=verify, create_agent=unexpected_model,
+        dialog_rejected=False,
+    ))
+    request = _request(InMemorySessionLeaseBroker())
+
+    result = asyncio.run(runtime.execute(
+        request, api_key="unused", budget=_budget(), meter=ExecutionMeter(request.limits),
+    ))
+
+    assert result.status is expected_status
+    assert result.reservations == ()
+    assert result.scopes == ()
+    assert navigation_calls == ([] if auth_status else [_BROWSER_USE_INVENTORY_ENTRY_URL])
+    assert rendered_reads == (
+        ["current-page-session"]
+        if expected_status is InventoryExecutionStatus.EMPTY_UPCOMING or post_read_event is not None
+        else []
+    )
 
 
 def test_inventory_task_requires_unknown_discovery_after_saved_match() -> None:
@@ -1687,3 +1990,33 @@ def test_job_teardown_preserves_process_wide_content_free_directories(
     assert not owned_root.exists()
     assert config_dir.is_dir() and list(config_dir.iterdir()) == []
     assert cache_dir.is_dir() and list(cache_dir.iterdir()) == []
+
+
+@pytest.mark.parametrize("requested_success", [None, False, True])
+def test_submission_diagnostic_reports_progress_without_private_content(
+    caplog: pytest.LogCaptureFixture, requested_success: bool | None
+) -> None:
+    state = _EpisodeState(
+        reservations=[
+            BrowserUseReservationPayload(
+                confirmation_id="PRIVATE-CONFIRMATION",
+                property_name="PRIVATE-HOTEL",
+                booked_total="987.65",
+            )
+        ],
+        visible_dom_snapshots=["PRIVATE-PAGE-TEXT"],
+        rejected_identity_count=2,
+        attached_facts_count=1,
+        rejected_facts_count=3,
+        requested_success=requested_success,
+        terminal=InventoryExecutionStatus.PROVIDER_FAILURE,
+    )
+
+    _log_submission_diagnostic("synthetic-execution", state)
+
+    assert "buffered_identities=1 rejected_identities=2 attached_facts=1" in caplog.text
+    assert "rejected_facts=3" in caplog.text
+    assert f"requested_success={requested_success}" in caplog.text
+    assert "terminal=provider_failure" in caplog.text
+    for private_value in ("PRIVATE-CONFIRMATION", "PRIVATE-HOTEL", "987.65", "PRIVATE-PAGE-TEXT"):
+        assert private_value not in caplog.text

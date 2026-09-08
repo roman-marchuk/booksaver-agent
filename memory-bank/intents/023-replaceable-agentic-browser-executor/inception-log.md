@@ -64,22 +64,22 @@ and merge. It does not authorize silent consent, personal-key use by Browser Use
 
 | Artifact | Status | File |
 |----------|--------|------|
-| Requirements | Amended | `requirements.md` (FR-1 through FR-22) |
+| Requirements | Amended | `requirements.md` (FR-1 through FR-27) |
 | System Context | Amended | `system-context.md` |
 | Architecture Decisions | Accepted | `architecture-decisions.md`, ADR-036 through ADR-046 |
-| Units | Amended | `units.md` and seven unit briefs |
-| Stories | Amended | 29 story files (US-143 through US-171) |
-| Bolt Plan | Amended | Bolts 050 through 065, with 052 live-gated and 055 blocked |
+| Units | Amended | `units.md` and ten unit briefs |
+| Stories | Amended | 34 story files (including US-184 through US-186) |
+| Bolt Plan | Amended | 19 bolts including 073, with 052 live-gated and 055 blocked |
 
 ## Summary
 
 | Metric | Count |
 |--------|-------|
-| Functional Requirements | 22 |
+| Functional Requirements | 27 |
 | Non-Functional Requirements | 7 |
-| Units | 7 |
-| Stories | 29 |
-| Bolts Planned | 16 (050 through 065; 052 live-gated and 055 blocked) |
+| Units | 10 |
+| Stories | 34 |
+| Bolts Planned | 19 (including 073; 052 live-gated and 055 blocked) |
 
 ## Decision Log
 
@@ -129,3 +129,25 @@ and merge. It does not authorize silent consent, personal-key use by Browser Use
 1. Configure and deploy `consented_users` only through a separately authorized operations step.
 2. Continue Browser Use-specific qualification evidence as a monitoring and rollback signal.
 3. Keep bolt 055 blocked until the actual rollout and the 30-day rollback window complete.
+
+## 2026-09-08T21:59:19Z - Caller inventory outcome amendment
+
+Master analysis routes the diagnosed production follow-up to inception for Unit 010 / Bolt 073,
+then construction. FR-25 through FR-27 map to US-184 through US-186 exactly once. This adds one
+unit and one bolt; Intent 023 now has 10 units and 34 stories. Existing qualification and retirement
+statuses remain unchanged.
+
+The user authorized AI-DLC implementation and conditional merge/redeployment if the issue is
+straightforward and verified while the user is away. That standing instruction covers these
+narrow checkpoints; final-head review, operations checks, and honest live acceptance reporting
+remain required. No new architecture, provider, schema migration, absence authority, or access
+policy is approved. Initial investigation/message prototyping preceded this recorded amendment.
+
+Requirements, context, unit brief, three story files, story index, and the bolt plan are aligned.
+Live acceptance for affected callers is pending; the father's complete repair is not claimed.
+
+## 2026-09-08T22:10:51Z - Caller outcome construction handoff
+
+US-184 through US-186, Unit 010, and Bolt 073 completed construction after both isolated caller
+replays and the final 1839-test/Ruff/mypy117 gate passed. Restored service health passed. Final-head
+review and release remain pending; no merge, deployment, or end-to-end price acceptance is claimed.

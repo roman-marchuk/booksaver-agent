@@ -2468,3 +2468,70 @@ def test_compatibility_scheduler_reuses_inventory_residual_agentic_limits(
     assert residual_limits[0].max_actions == 11
     assert residual_limits[0].max_computer_use_actions == 4
     assert residual_limits[0].max_job_cost == UsdAmount(750_000)
+
+
+def test_empty_inventory_reports_for_owner_and_invitee_without_legacy_browser(
+    tmp_path: Path,
+) -> None:
+    sessions = _session_repo(tmp_path)
+    disclosure_version = _config(tmp_path).agentic_browser_settings.disclosure_version
+    with SqliteStore(tmp_path / "booksaver.db") as store:
+        users = SqliteUserRepository(store)
+        owner = users.get_owner()
+        users.link_telegram_id(owner.user_id, 101)
+        invitee = users.get_or_create_by_telegram_id(202, UserRole.USER)
+        SqliteAgenticDisclosureConsentRepository(store).acknowledge(
+            user_id=invitee.user_id,
+            disclosure_version=disclosure_version,
+            acknowledged_at=datetime.now(UTC),
+        )
+    _seed_session(sessions, owner.user_id)
+    _seed_session(sessions, invitee.user_id)
+    executor = FakeInventoryBrowserExecutor(
+        [
+            InventoryExecutionResult(status=InventoryExecutionStatus.EMPTY_UPCOMING),
+            InventoryExecutionResult(status=InventoryExecutionStatus.EMPTY_UPCOMING),
+        ]
+    )
+    legacy_browser_opens: list[None] = []
+
+    def legacy_browser_factory() -> BrowserContext:
+        legacy_browser_opens.append(None)
+        return BrowserContext()
+
+    coordinator = _build_coordinator(
+        _config(tmp_path),
+        browser_factory=legacy_browser_factory,
+        session_repository=sessions,
+        agentic_inventory_executor_factory=lambda _budget, _leases: executor,
+        bookings_inventory_executor_factory=lambda _budget, _leases: executor,
+    )
+    completions: list[InventoryCompletion] = []
+
+    for telegram_user_id in (101, 202):
+        completed = threading.Event()
+        assert (
+            coordinator.request_inventory(
+                telegram_user_id,
+                lambda outcome, event=completed: (completions.append(outcome), event.set()),
+            )
+            is ImmediateAdmission.ACCEPTED
+        )
+        assert completed.wait(1)
+
+    assert [request.owner_user_id for request in executor.requests] == [
+        owner.user_id,
+        invitee.user_id,
+    ]
+    assert legacy_browser_opens == []
+    assert all(
+        completion.report is not None
+        and completion.report.completeness is InventoryCompleteness.INCOMPLETE
+        for completion in completions
+    )
+
+    assert all(c.report is not None and c.report.upcoming_empty_observed for c in completions)
+    with SqliteStore(tmp_path / "booksaver.db") as store:
+        for user_id in (owner.user_id, invitee.user_id):
+            report = SqliteAccountReservationRepository(store).latest_run_for_user(user_id)
+            assert report is not None and report.upcoming_empty_observed

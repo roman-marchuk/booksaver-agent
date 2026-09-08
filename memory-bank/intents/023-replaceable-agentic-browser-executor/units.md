@@ -3,12 +3,19 @@ intent: 023-replaceable-agentic-browser-executor
 phase: inception
 status: complete
 created: 2026-08-16T19:18:41Z
-updated: 2026-09-03T23:32:00Z
+updated: 2026-09-08T21:59:19Z
 ---
 
 # Units: Replaceable Agentic Browser Executor
 
 ## Unit Decomposition
+
+### 010-caller-inventory-outcomes
+
+- Purpose: Recognize non-destructive empty/partial inventory outcomes, explain caller status plainly,
+  and verify account-specific behavior without modifying production truth.
+- Assigned requirements: FR-25, FR-26, FR-27. Stories: US-184 through US-186. Bolt 073.
+- Dependencies: Units 004, 007, and 008; existing caller-scoped replay and coordinator/browser lease.
 
 ### 009-price-rejection-diagnostics
 
@@ -87,6 +94,9 @@ updated: 2026-09-03T23:32:00Z
 | FR-11 | `005-legacy-price-selector-retirement` |
 | FR-13, FR-14, FR-15, FR-16, FR-17, FR-18, FR-19, FR-20 | `006-browser-use-price-executor` |
 | FR-21, FR-22 | `007-shared-browser-use-access` |
+| FR-23 | `008-connect-refresh-status` |
+| FR-24 | `009-price-rejection-diagnostics` |
+| FR-25, FR-26, FR-27 | `010-caller-inventory-outcomes` |
 
 Each functional requirement is assigned exactly once. Cross-unit constraints remain traced through
 dependencies and story acceptance criteria.
@@ -137,5 +147,9 @@ flowchart LR
     production-equivalent replay, and preserve explicit rollback.
 15. Bolt 065: add explicit `consented_users` routing for disclosed invitees and safe owner-only API
     funding/key-presence visibility.
-16. Bolt 055: legacy price-selector retirement, blocked until Browser Use price promotion and the
+16. Bolt 066: distinguish login, inventory refresh, and price checks with accurate ordering.
+17. Bolt 068: retain bounded price-rejection diagnostics without changing acceptance.
+18. Bolt 073: preserve validated partial positives, recognize code-observed empty upcoming inventory
+    without absence authority, simplify Telegram outcomes, and qualify caller-specific paths.
+19. Bolt 055: legacy price-selector retirement, blocked until Browser Use price promotion and the
     30-day rollback window pass.
