@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -557,6 +558,81 @@ def test_bookings_reports_accepted_positive_only_refresh_as_success(
     assert "Other saved reservations are still here" in text
     assert "couldn't finish updating" not in text
     assert "refresh failed" not in text
+
+
+@pytest.mark.parametrize(
+    ("empty_observed", "saved_kind"),
+    [
+        (False, "current"),
+        (False, "dateless"),
+        (True, "completed"),
+        (True, "current"),
+        (True, "dateless"),
+    ],
+)
+def test_bookings_hidden_saved_rows_do_not_change_successful_refresh_outcome(
+    tmp_path: Path, empty_observed: bool, saved_kind: str,
+) -> None:
+    db_path = tmp_path / "booksaver.db"
+    user_id = _register_caller(db_path, telegram_id=1)
+    today = datetime.now(UTC).date()
+    observation = _observation(_booking("hidden", check_in=today))
+    if saved_kind == "dateless":
+        observation = replace(observation, check_in=None, check_out=None)
+    elif saved_kind == "completed":
+        observation = replace(
+            observation,
+            lifecycle=ReservationLifecycle.COMPLETED,
+            check_in=today - timedelta(days=7),
+            check_out=today - timedelta(days=3),
+        )
+    _sync_observations(db_path, user_id, (observation,))
+    with SqliteStore(db_path) as store:
+        reservations = tuple(SqliteAccountReservationRepository(store).list_for_user(user_id))
+    assert len(reservations) == 1
+    report = SynchronizationReport(
+        run_id="sync-hidden-rows",
+        completeness=InventoryCompleteness.INCOMPLETE,
+        discovered=0 if empty_observed else 1,
+        eligible=0,
+        ineligible=0 if empty_observed else 1,
+        upcoming_empty_observed=empty_observed,
+    )
+    router = CommandRouter()
+    sent: list[tuple[int, str]] = []
+
+    class Coordinator:
+        def request_inventory(self, _user_id, callback):
+            callback(InventoryCompletion(report, reservations))
+            return ImmediateAdmission.ACCEPTED
+
+    register_readonly_commands(
+        router=router,
+        reply=lambda chat_id, text: sent.append((chat_id, text)),
+        db_path=db_path,
+        scheduler=Scheduler(),
+        check_coordinator=Coordinator(),  # type: ignore[arg-type]
+    )
+
+    router.dispatch(_cmd("/bookings"))
+
+    text = "\n".join(message for _chat_id, message in sent)
+    assert "couldn't" not in text
+    assert "failed" not in text
+    assert "Try /bookings" not in text
+    assert "No future reservations found" not in text
+    assert "CONF-hidden" not in text  # Display filtering remains unchanged.
+    if empty_observed:
+        assert "Booking.com shows no upcoming reservations" in text
+        assert "Your previously saved reservations are still here" in text
+        assert "check which Booking.com account" not in text
+    else:
+        assert "We updated the reservations we could find" in text
+        assert "future check-in dates" in text
+        assert "shows no upcoming reservations" not in text
+    with SqliteStore(db_path) as store:
+        preserved = tuple(SqliteAccountReservationRepository(store).list_for_user(user_id))
+    assert preserved == reservations
 
 
 def test_bookings_keeps_incomplete_warning_for_ambiguous_positive_run(

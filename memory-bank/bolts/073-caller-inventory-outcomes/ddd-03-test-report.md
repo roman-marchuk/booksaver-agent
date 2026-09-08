@@ -58,3 +58,17 @@ checks; no merge, deployment, or deployed price/Telegram acceptance is claimed.
 Evidence update recorded: 2026-09-08T22:09:53Z. Live isolated caller criteria passed; final full gate subsequently passed.
 
 Construction completion recorded: 2026-09-08T22:10:41Z.
+
+## 2026-09-08T22:22:25Z - Final-head review follow-up
+
+Cursor Bugbot identified a presentation edge: filtering current/date-less reservations from the
+upcoming view could label accepted positive inventory as loading failure, or incorrectly claim no
+saved reservations existed. Five reproductions cover the edge. The correction captures whether
+saved reservations exist before filtering and handles accepted positives before the failure branch.
+It changes presentation only; inventory validation and reconciliation remain unchanged.
+
+The corrected candidate passed **58 targeted tests**, Ruff, and mypy over **117** source files.
+Its final full quality gate passed: **1,844 tests**, 52 existing warnings, **44.10 seconds**, recorded
+2026-09-08T22:22:38Z. This supersedes the earlier 1839-test gate for the presentation correction. A new final
+revision/image and smoke verification remain required, followed by a fresh current-head Bugbot pass.
+The bounded construction review correction is verified; no merge or deployment is claimed.

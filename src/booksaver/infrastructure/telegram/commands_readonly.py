@@ -252,6 +252,7 @@ def register_readonly_commands(
         completion: InventoryCompletion | None = None,
     ) -> list[str]:
         today = datetime.now(UTC).date()
+        has_saved = bool(reservations)
         reservations = tuple(
             reservation
             for reservation in reservations
@@ -262,7 +263,13 @@ def register_readonly_commands(
         report = completion.report if completion is not None else None
         if not reservations:
             if report is not None and report.upcoming_empty_observed:
-                return [empty_upcoming_message(has_saved=False)]
+                return [empty_upcoming_message(has_saved=has_saved)]
+            if report is not None and report.accepted_positive_observations:
+                return [
+                    "We updated the reservations we could find on Booking.com. "
+                    "There are no saved upcoming reservations with confirmed "
+                    "future check-in dates to show."
+                ]
             if completion is not None and report is None:
                 return [
                     "We couldn't load your reservations from Booking.com. "

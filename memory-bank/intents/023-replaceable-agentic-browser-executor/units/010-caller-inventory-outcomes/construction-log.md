@@ -26,3 +26,10 @@
   health OK; Caddy up six weeks with only 80/443 published and BookSaver 8080/6080 internal. All three
   stories, Unit 010, and Bolt 073 complete for construction. Final-head release review/merge/deployment
   and deployed price/Telegram acceptance remain separate.
+- 2026-09-08T22:22:25Z: Bugbot filtered-view presentation issue reproduced in five cases. Capture original saved
+  presence before filtering and handle accepted positives before failure. 58 targeted tests, Ruff,
+  and mypy over 117 source files passed. Review correction full gate, new final image/smoke, and
+  fresh current-head Bugbot remain pending; no merge or deployment claimed.
+- 2026-09-08T22:22:38Z: Review correction final full gate passed: 1844 tests, 52 existing warnings, 44.10s.
+  Combined with 58 targeted tests, Ruff, and mypy117, the correction is ready for final-head image
+  smoke and renewed Bugbot/release checks. No merge or deployment claimed.
